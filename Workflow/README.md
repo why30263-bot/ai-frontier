@@ -19,7 +19,7 @@
 python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json
 ```
 
-该命令只使用 Python 标准库。设置 `AI_API_KEY`、`AI_API_BASE` 和 `AI_MODEL` 后才会启用兼容接口的编辑增强；任一变量缺失时自动回退，不影响采集。
+该命令只使用 Python 标准库。仓库工作流默认通过 GitHub Models 生成中文标题、摘要和详细分析；本地设置 `AI_API_KEY`、`AI_API_BASE` 和 `AI_MODEL` 后也可启用任意兼容接口。增强请求失败时保留上一版中文简报，避免用英文原始抓取结果覆盖成品。
 
 ## 反馈映射
 
