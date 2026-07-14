@@ -72,6 +72,8 @@
                             <TextBlock Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Button Content="换一批" Click="NextBatchButton_Click" AutomationProperties.Name="换一批资讯" />
                             <Button Content="刷新" Click="RefreshButton_Click" AutomationProperties.Name="刷新新闻" />
                             <Border Padding="10,6" CornerRadius="6" Background="{ThemeResource AccentFillColorSecondaryBrush}">
                                 <TextBlock Text="今日已更新" FontWeight="SemiBold" />
@@ -183,10 +185,6 @@
                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="17" TextWrapping="Wrap" LineHeight="27" />
 
-                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                                <TextBlock Text="事件全貌（整理版）" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="{Binding SelectedItem.FullBrief}" TextWrapping="Wrap" LineHeight="27" FontSize="16" />
-
                                 <InfoBar
                                     IsOpen="True"
                                     IsClosable="False"
@@ -194,25 +192,24 @@
                                     Title="为什么值得看"
                                     Message="{Binding SelectedItem.WhyItMatters}" />
 
-                                <StackPanel Spacing="8">
-                                    <TextBlock Text="这条内容对你有用吗？" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                    <RatingControl x:Name="PreferenceRating" MaxRating="5" ValueChanged="PreferenceRating_ValueChanged" AutomationProperties.Name="新闻喜好程度" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="喜欢" Tag="like" Click="FeedbackButton_Click" AutomationProperties.Name="喜欢这条新闻" />
-                                        <Button Content="不感兴趣" Tag="dislike" Click="FeedbackButton_Click" AutomationProperties.Name="不感兴趣" />
-                                        <Button Content="收藏" Tag="bookmark" Click="FeedbackButton_Click" AutomationProperties.Name="收藏新闻" />
-                                    </StackPanel>
-                                    <Button Content="减少此类内容" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" />
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="完整报道" FontSize="22" FontWeight="SemiBold" />
+                                    <TextBlock Text="按资讯类型压缩原文重点，并保持事实展开顺序" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
-
-                                <InfoBar
-                                    IsOpen="{x:Bind ViewModel.IsFeedbackMessageOpen, Mode=TwoWay}"
-                                    IsClosable="True"
-                                    Severity="Success"
-                                    Message="{x:Bind ViewModel.FeedbackMessage, Mode=OneWay}" />
+                                <ItemsControl ItemsSource="{Binding SelectedItem.BriefSections}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:BriefSection">
+                                            <StackPanel Margin="0,0,0,18" Spacing="7">
+                                                <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                <TextBlock Text="{x:Bind Body}" FontSize="16" TextWrapping="Wrap" LineHeight="28" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                                <TextBlock Text="关键事实" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="核查要点" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.KeyFacts}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -228,19 +225,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <TextBlock Text="背景" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="{Binding SelectedItem.Context}" TextWrapping="Wrap" LineHeight="25" />
-
-                                <TextBlock Text="给入门读者的解释" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="{Binding SelectedItem.BeginnerExplainer}" TextWrapping="Wrap" LineHeight="25" />
-
-                                <TextBlock Text="可能产生的影响" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="{Binding SelectedItem.Impact}" TextWrapping="Wrap" LineHeight="25" />
-
-                                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="局限与边界" Message="{Binding SelectedItem.Limitations}" />
-
-                                <TextBlock Text="接下来观察什么" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="{Binding SelectedItem.WhatToWatch}" TextWrapping="Wrap" LineHeight="25" />
+                                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="报道边界" Message="{Binding SelectedItem.Limitations}" />
 
                                 <TextBlock Text="来源链" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.SourceTrail}">
@@ -259,6 +244,24 @@
                                     <Button Content="使用 Codex 深度分析" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读" />
                                     <Button Grid.Column="1" Content="打开原始网站 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开原始来源" />
                                 </Grid>
+
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="读完后，这条内容对你有用吗？" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <RatingControl x:Name="PreferenceRating" MaxRating="5" ValueChanged="PreferenceRating_ValueChanged" AutomationProperties.Name="新闻喜好程度" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="喜欢" Tag="like" Click="FeedbackButton_Click" AutomationProperties.Name="喜欢这条新闻" />
+                                        <Button Content="不感兴趣" Tag="dislike" Click="FeedbackButton_Click" AutomationProperties.Name="不感兴趣" />
+                                        <Button Content="收藏" Tag="bookmark" Click="FeedbackButton_Click" AutomationProperties.Name="收藏新闻" />
+                                    </StackPanel>
+                                    <Button Content="减少此类内容" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" />
+                                </StackPanel>
+
+                                <InfoBar
+                                    IsOpen="{x:Bind ViewModel.IsFeedbackMessageOpen, Mode=TwoWay}"
+                                    IsClosable="True"
+                                    Severity="Success"
+                                    Message="{x:Bind ViewModel.FeedbackMessage, Mode=OneWay}" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

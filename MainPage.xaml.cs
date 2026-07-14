@@ -73,6 +73,9 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private void NextBatchButton_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.NextBatch();
+
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateResponsiveLayout(e.NewSize.Width);
 

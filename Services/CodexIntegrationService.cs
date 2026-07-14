@@ -198,7 +198,7 @@ public sealed class CodexIntegrationService
             ## 摘要
             {item.Summary}
 
-            ## 事件全貌（应用整理版）
+            ## 完整报道（应用按资讯类型整理）
             {item.FullBrief}
 
             ## 关键事实
@@ -241,7 +241,8 @@ public sealed class CodexIntegrationService
         - 公共编辑源位于 https://github.com/why30263-bot/ai-frontier 。
         - GitHub Actions 定时采集公开 RSS、Atom、API 和近期活跃 GitHub 项目，完成去重、来源限额与中文编辑。
         - 客户端从 GitHub 获取最新 news.json 与来源配置；远程不可用时使用安装包内快照和内置采集器。
-        - 新闻列表只显示标题和摘要；详情页展示事实、背景、入门解释、影响、局限、后续观察和来源链。
+        - 首页每批固定显示 10 条，可换一批；首批优先保证大模型、Agent、研究、开源和产业动态各有覆盖。
+        - 新闻列表只显示标题和摘要；详情页按资讯类型组织完整报道：论文讲背景、方法、结果与贡献，项目讲工作方式与成熟度，新闻讲事件经过、参与方、影响和后续。
         - 用户喜欢、不感兴趣、收藏和评分只保存在本机，用于调整主题、来源和阅读深度权重。
         - Codex 不是采集和更新的强制依赖；它只在用户主动点击时读取当前资讯上下文并辅助深度阅读。
         """;

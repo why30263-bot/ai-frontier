@@ -27,10 +27,13 @@ public sealed class NewsService
         var remoteEdition = await TryLoadRemoteEditionAsync(configuration.RemoteNewsUrl);
         var edition = ChooseNewest(localEdition, remoteEdition);
 
-        if (edition.Items.Count < 10 || DateTimeOffset.Now - edition.GeneratedAt > TimeSpan.FromHours(configuration.StaleAfterHours))
+        var lacksRequiredCategories = configuration.CategoryMinimums.Any(pair =>
+            edition.Items.Count(item => item.Category == pair.Key) < pair.Value);
+        if (edition.Items.Count < 10 || lacksRequiredCategories ||
+            DateTimeOffset.Now - edition.GeneratedAt > TimeSpan.FromHours(configuration.StaleAfterHours))
         {
             var collected = await _collector.CollectAsync(configuration);
-            edition.Items = Merge(edition.Items, collected, configuration.MaxItems);
+            edition.Items = Merge(edition.Items, collected, configuration);
             edition.GeneratedAt = DateTimeOffset.Now;
             edition.EditionDate = DateTimeOffset.Now.ToString("yyyy-MM-dd");
             edition.WindowHours = 72;
@@ -102,7 +105,10 @@ public sealed class NewsService
     private static NewsEdition ChooseNewest(NewsEdition local, NewsEdition? remote) =>
         remote is { Items.Count: > 0 } && remote.GeneratedAt > local.GeneratedAt ? remote : local;
 
-    private static List<NewsItem> Merge(IEnumerable<NewsItem> curated, IEnumerable<NewsItem> collected, int maxItems)
+    private static List<NewsItem> Merge(
+        IEnumerable<NewsItem> curated,
+        IEnumerable<NewsItem> collected,
+        FeedConfiguration configuration)
     {
         var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -118,10 +124,19 @@ public sealed class NewsService
             merged.Add(item);
         }
 
-        return merged
-            .OrderByDescending(item => item.PublishedAt)
-            .Take(Math.Max(10, maxItems))
-            .ToList();
+        var ordered = merged.OrderByDescending(item => item.PublishedAt).ToList();
+        var remaining = new List<NewsItem>(ordered);
+        var balanced = new List<NewsItem>();
+        foreach (var (category, minimum) in configuration.CategoryMinimums)
+        {
+            foreach (var item in remaining.Where(item => item.Category == category).Take(minimum).ToList())
+            {
+                balanced.Add(item);
+                remaining.Remove(item);
+            }
+        }
+        balanced.AddRange(remaining);
+        return balanced.Take(Math.Max(10, configuration.MaxItems)).ToList();
     }
 
     private static void EnrichForReading(NewsItem item)
@@ -147,13 +162,18 @@ public sealed class NewsService
         {
             item.SourceTrail = [$"{item.SourceName}: {item.SourceUrl}"];
         }
-        item.FullBrief = string.IsNullOrWhiteSpace(item.FullBrief)
-            ? BuildFullBrief(item)
-            : item.FullBrief;
+        item.BriefSections ??= [];
+        if (item.BriefSections.Count == 0)
+        {
+            item.BriefSections = BuildBriefSections(item);
+        }
+        item.FullBrief = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            item.BriefSections.Select(section => $"{section.Title}{Environment.NewLine}{section.Body}"));
         item.ReadMinutes = Math.Max(item.ReadMinutes, Math.Clamp(item.FullBrief.Length / 300 + 2, 3, 8));
     }
 
-    private static string BuildFullBrief(NewsItem item)
+    private static List<BriefSection> BuildBriefSections(NewsItem item)
     {
         var facts = item.KeyFacts
             .Where(fact => !string.IsNullOrWhiteSpace(fact) &&
@@ -163,27 +183,57 @@ public sealed class NewsService
         var factText = facts.Count == 0
             ? "当前公开材料没有提供更多可独立列出的细节，具体数据和条件需要回到原始页面核对。"
             : string.Join("；", facts.Select(fact => fact.Trim().TrimEnd('。', '；') + "。"));
-        var scope = item.Category switch
+
+        return item.Category switch
         {
-            "开源项目" => "影响范围主要是公开仓库、开发者社区以及可能采用该项目的团队",
-            "重要研究" => "影响范围首先是论文所定义的实验与研究场景，不能直接等同于成熟产品",
-            "大模型" => "影响范围取决于模型实际开放地区、调用方式、价格和使用限制",
-            "Agent" => "影响范围主要是多步骤任务、工具调用和自动化工作流",
-            _ => "具体地点或市场范围以原始来源披露为准；若原文没有说明，这里不作猜测"
+            "重要研究" =>
+            [
+                Section("研究背景", item.Context),
+                Section("研究要解决的问题", item.Summary),
+                Section("方法与实验思路", factText),
+                Section("主要结果与贡献", $"{item.Impact} 当前材料表明这项工作的价值首先在于研究问题、方法或实验发现本身。"),
+                Section("证据边界", $"{item.Limitations} 论文结论只覆盖作者给出的数据、任务和实验条件，仍需独立复现。")
+            ],
+            "开源项目" =>
+            [
+                Section("它想解决什么问题", item.Context),
+                Section("项目怎样工作", item.Summary),
+                Section("目前提供了什么", factText),
+                Section("适合谁关注", $"{item.BeginnerExplainer} {item.Impact}"),
+                Section("成熟度、成本与风险", $"{item.Limitations} {item.WhatToWatch}")
+            ],
+            "大模型" =>
+            [
+                Section("发布信息与适用范围", $"这条信息对应 {item.PublishedAt} 的公开资料，来源为 {item.SourceName}。{item.Summary}"),
+                Section("这次更新了什么", factText),
+                Section("能力和使用方式有什么变化", $"{item.BeginnerExplainer} {item.Impact}"),
+                Section("行业背景", item.Context),
+                Section("限制与待验证问题", $"{item.Limitations} {item.WhatToWatch}")
+            ],
+            "Agent" =>
+            [
+                Section("任务与使用场景", item.Context),
+                Section("Agent 怎样完成任务", item.Summary),
+                Section("关键能力与流程", factText),
+                Section("可能带来的变化", $"{item.BeginnerExplainer} {item.Impact}"),
+                Section("可靠性、权限与失败风险", $"{item.Limitations} {item.WhatToWatch}")
+            ],
+            _ =>
+            [
+                Section("新闻导语", item.Summary),
+                Section("事件经过", factText),
+                Section("参与方、时间与范围", $"这条信息对应 {item.PublishedAt} 的公开报道，来源为 {item.SourceName}。具体地点或市场范围以原始来源披露为准；原文未说明时不作猜测。"),
+                Section("背景与原因", item.Context),
+                Section("影响与下一步", $"{item.Impact} {item.WhatToWatch} {item.Limitations}")
+            ]
         };
-
-        return $"""
-            时间、参与方与范围：这条信息对应 {item.PublishedAt} 的公开资料，来源为 {item.SourceName}。{scope}。
-
-            具体发生了什么：{item.Summary.Trim()} {factText}
-
-            为什么会发生：{item.Context.Trim()}
-
-            目前能看到的影响：{item.Impact.Trim()} 这表示它可能改变相关产品、研究或开发工作的选择，但实际影响仍取决于功能是否真正开放、结果能否复现，以及真实用户是否持续采用。
-
-            阅读边界：{item.Limitations.Trim()} 因此，上述内容是根据当前公开材料整理出的事件全貌，不把论文结论、项目热度或厂商表述自动当成已经普遍成立的事实。
-            """;
     }
+
+    private static BriefSection Section(string title, string body) => new()
+    {
+        Title = title,
+        Body = body.Trim()
+    };
 
     private static HttpClient CreateClient()
     {

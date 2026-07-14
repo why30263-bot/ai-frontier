@@ -4,15 +4,26 @@
   "remoteNewsUrl": "https://raw.githubusercontent.com/why30263-bot/ai-frontier/main/Data/news.json",
   "refreshMinutes": 60,
   "staleAfterHours": 18,
-  "maxItems": 18,
-  "maxItemsPerSource": 4,
+  "maxItems": 30,
+  "batchSize": 10,
+  "maxItemsPerSource": 5,
   "freshHours": 72,
-  "supplementDays": 7,
+  "supplementDays": 14,
+  "categoryMinimums": {
+    "大模型": 4,
+    "Agent": 4,
+    "开源项目": 4,
+    "重要研究": 4,
+    "产业动态": 4
+  },
   "githubDiscovery": {
     "enabled": true,
-    "query": "topic:artificial-intelligence stars:>500",
-    "minimumStars": 500,
-    "maxItems": 4
+    "queries": [
+      { "query": "topic:ai-agent stars:>100", "category": "Agent", "minimumStars": 100, "maxItems": 4 },
+      { "query": "topic:llm-agent stars:>100", "category": "Agent", "minimumStars": 100, "maxItems": 4 },
+      { "query": "topic:large-language-models stars:>500", "category": "大模型", "minimumStars": 500, "maxItems": 4 },
+      { "query": "topic:artificial-intelligence stars:>500", "category": "开源项目", "minimumStars": 500, "maxItems": 4 }
+    ]
   },
   "feeds": [
     { "name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "category": "大模型", "brand": "OpenAI", "brandColor": "#111827", "logoAsset": "Assets/Brands/openai.svg", "trust": "官方公告" },

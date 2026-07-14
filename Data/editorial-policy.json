@@ -1,11 +1,13 @@
 {
   "schemaVersion": 1,
-  "targetItems": { "minimum": 12, "preferred": 15, "maximum": 18 },
+  "targetItems": { "minimum": 20, "preferred": 30, "maximum": 30, "batchSize": 10 },
   "categories": ["大模型", "Agent", "开源项目", "重要研究", "产业动态", "人物观点"],
-  "requiredDetailFields": ["fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
+  "requiredDetailFields": ["briefSections", "fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
   "rules": [
     "标题只描述已确认事件，不使用震惊、颠覆、淘汰等夸张词。",
-    "摘要回答发生了什么，详细页再解释背景和意义。",
+    "摘要回答发生了什么；完整报道必须按资讯类型使用五段式小标题，压缩原文但不打乱事实顺序。",
+    "首批10条必须覆盖大模型、Agent、开源项目、重要研究和产业动态，每类目标2条。",
+    "近72小时某类不足时，把该类时间窗放宽到14天并标记补充阅读，再启用可核查的专项项目发现。",
     "同一事件只保留一条主卡片，其他来源进入 sourceTrail。",
     "社交平台只用于发现线索，正式条目必须回到原始来源核查。",
     "偏好只影响普通内容排序，不得改变事实核查标准。",

@@ -25,6 +25,7 @@ public sealed class NewsItem
     public string Title { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
     public string FullBrief { get; set; } = string.Empty;
+    public List<BriefSection> BriefSections { get; set; } = [];
     public string PublishedAt { get; set; } = string.Empty;
     public string SourceName { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;
@@ -68,6 +69,12 @@ public sealed class NewsItem
 
         return Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
     }
+}
+
+public sealed class BriefSection
+{
+    public string Title { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
 }
 
 public sealed class PreferenceProfile
