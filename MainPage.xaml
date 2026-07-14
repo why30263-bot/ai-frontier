@@ -25,6 +25,12 @@
             <NavigationViewItem Content="今日" Tag="全部" IsSelected="True">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Content="三日热榜" Tag="三日热榜">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="为你推荐" Tag="为你推荐">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D4;" /></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem Content="大模型" Tag="大模型">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
@@ -70,6 +76,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="AI 前沿" Style="{StaticResource TitleTextBlockStyle}" />
                             <TextBlock Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.ViewExplanation, Mode=OneWay}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -130,6 +137,7 @@
 
                                         <StackPanel Grid.Column="1" Padding="10,14,18,14" Spacing="7">
                                             <TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{x:Bind HeatLabel}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" />
                                             <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
                                             <TextBlock Text="{x:Bind Summary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
                                             <Grid ColumnSpacing="8">
@@ -183,6 +191,7 @@
 
                                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="{Binding SelectedItem.HeatLabel}" Message="{Binding SelectedItem.HeatDisclosure}" />
                                 <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="17" TextWrapping="Wrap" LineHeight="27" />
 
                                 <InfoBar

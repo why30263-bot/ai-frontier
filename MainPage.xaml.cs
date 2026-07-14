@@ -106,27 +106,27 @@ public sealed partial class MainPage : Page
         }
     }
 
-    private void NewsList_ItemClick(object sender, ItemClickEventArgs e)
+    private async void NewsList_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is not NewsItem item)
         {
             return;
         }
 
-        ShowDetail(item);
+        await ShowDetailAsync(item);
     }
 
-    private void CardDetailButton_Click(object sender, RoutedEventArgs e)
+    private async void CardDetailButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: NewsItem item })
         {
-            ShowDetail(item);
+            await ShowDetailAsync(item);
         }
     }
 
-    private void ShowDetail(NewsItem item)
+    private async Task ShowDetailAsync(NewsItem item)
     {
-        ViewModel.Select(item);
+        await ViewModel.SelectAsync(item);
         NewsList.SelectedItem = item;
         PreferenceRating.Value = 0;
         if (_isCompact)
