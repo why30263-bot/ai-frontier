@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the leading v
+        required: true
+        default: "1.0.0"
 
 permissions:
   contents: write
@@ -19,7 +24,7 @@ jobs:
       - name: Publish self-contained app
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}".TrimStart('v') } else { "${{ inputs.version }}" }
           if ($version -notmatch '^\d+\.\d+\.\d+') { $version = "1.0.0" }
           dotnet publish AIFrontier.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:Version=$version -p:PublishTrimmed=false -p:PublishReadyToRun=false -o dist
       - name: Install Inno Setup
@@ -28,7 +33,7 @@ jobs:
       - name: Build one-click installer
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}".TrimStart('v') } else { "${{ inputs.version }}" }
           if (-not $version) { $version = "1.0.0" }
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "/DPublishDir=$pwd\dist" installer\AIFrontier.iss
           $hash = (Get-FileHash installer\output\AIFrontier-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -40,8 +45,9 @@ jobs:
             installer/output/AIFrontier-Setup.exe
             installer/output/AIFrontier-Setup.exe.sha256
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" installer/output/AIFrontier-Setup.exe installer/output/AIFrontier-Setup.exe.sha256 --generate-notes
+        run: |
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v${{ inputs.version }}" }
+          gh release create $tag installer/output/AIFrontier-Setup.exe installer/output/AIFrontier-Setup.exe.sha256 --target "${{ github.sha }}" --generate-notes
