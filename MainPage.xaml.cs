@@ -129,6 +129,7 @@ public sealed partial class MainPage : Page
         await ViewModel.SelectAsync(item);
         NewsList.SelectedItem = item;
         PreferenceRating.Value = 0;
+        DetailScrollViewer.ChangeView(null, 0, null, true);
         if (_isCompact)
         {
             _compactDetailVisible = true;

@@ -107,7 +107,7 @@ public sealed partial class BuiltInCollectorService
                 output.Add(new NewsItem
                 {
                     Id = Slug(link),
-                    Category = discovery.Category,
+                    Category = InferCategory(discovery.Category, title, description),
                     Brand = "GitHub",
                     BrandColor = "#24292F",
                     LogoAsset = "Assets/Brands/github.svg",

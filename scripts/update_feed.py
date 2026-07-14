@@ -27,6 +27,7 @@ from pathlib import Path
 
 
 USER_AGENT = "AIFrontier/1.0 (+https://github.com/why30263-bot/ai-frontier)"
+AI_BATCH_SIZE = 5
 
 
 def fetch(url: str, timeout: int = 20) -> bytes:
@@ -162,40 +163,40 @@ def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
     }
     section_sets = {
         "重要研究": [
-            ("研究背景", analysis["context"]),
-            ("研究要解决的问题", summary),
-            ("方法与实验思路", "当前来源摘要只提供了方法概览，具体模型、数据集、对照实验和评价指标需要回到论文原文核对。"),
-            ("主要结果与贡献", analysis["impact"]),
+            ("研究结论", summary),
+            ("核心贡献", analysis["impact"]),
+            ("方法与实验", "当前来源摘要只提供了方法概览，具体模型、数据集、对照实验和评价指标需要回到论文原文核对。"),
+            ("结果意味着什么", analysis["context"]),
             ("证据边界", analysis["limitations"]),
         ],
         "开源项目": [
-            ("它想解决什么问题", analysis["context"]),
-            ("项目怎样工作", summary),
-            ("目前提供了什么", "当前可确认的信息来自项目仓库；功能范围、安装步骤和示例应以 README 与 Release 为准。"),
-            ("适合谁关注", analysis["impact"]),
-            ("成熟度、成本与风险", f"{analysis['limitations']} {analysis['whatToWatch']}"),
+            ("它是什么，做到了什么", summary),
+            ("核心贡献", analysis["impact"]),
+            ("它怎样工作", analysis["context"]),
+            ("谁会用到", "它主要面向希望检查、修改或部署相关 AI 能力的开发者，具体功能和安装条件以项目文档为准。"),
+            ("成熟度与限制", f"{analysis['limitations']} {analysis['whatToWatch']}"),
         ],
         "大模型": [
-            ("发布信息与适用范围", summary),
-            ("这次更新了什么", "来源摘要没有列出的能力、价格、地区和开放条件不作补写。"),
-            ("能力和使用方式的变化", analysis["impact"]),
-            ("行业背景", analysis["context"]),
+            ("这次真正带来了什么", summary),
+            ("核心能力与改进", analysis["impact"]),
+            ("怎样使用", "模型的调用方式、开放范围、价格和地区条件以官方文档为准；摘要没有披露的内容不作补写。"),
+            ("对谁有影响", analysis["context"]),
             ("限制与待验证问题", f"{analysis['limitations']} {analysis['whatToWatch']}"),
         ],
         "Agent": [
-            ("任务与使用场景", analysis["context"]),
-            ("Agent 怎样完成任务", summary),
-            ("关键能力与流程", "需要结合原文核对它调用了哪些工具、如何规划步骤、怎样检查结果以及失败后如何恢复。"),
-            ("可能带来的变化", analysis["impact"]),
+            ("它能完成什么任务", summary),
+            ("关键贡献", analysis["impact"]),
+            ("它怎样行动", "需要结合原文核对它调用了哪些工具、如何规划步骤、怎样检查结果以及失败后如何恢复。"),
+            ("实际价值", analysis["context"]),
             ("可靠性、权限与失败风险", f"{analysis['limitations']} {analysis['whatToWatch']}"),
         ],
     }
     sections = section_sets.get(category, [
-        ("新闻导语", summary),
-        ("事件经过", "当前来源摘要提供了事件主线；人物、机构、数字和时间节点应以原始报道为准。"),
-        ("参与方、时间与范围", f"信息来自 {source_name}；来源未说明的地点或市场范围不作猜测。"),
-        ("背景与原因", analysis["context"]),
-        ("影响与下一步", f"{analysis['impact']} {analysis['whatToWatch']}"),
+        ("发生了什么", summary),
+        ("关键变化", analysis["impact"]),
+        ("事件经过", "当前来源摘要提供了事件主线；人物、机构、数字和时间节点需要结合完整材料整理。"),
+        ("会带来什么影响", analysis["context"]),
+        ("接下来要看什么", analysis["whatToWatch"]),
     ])
     analysis["briefSections"] = [{"title": title, "body": body} for title, body in sections]
     analysis["fullBrief"] = "\n\n".join(f"{title}\n{body}" for title, body in sections)
@@ -282,7 +283,7 @@ def collect_github(config: dict) -> list[dict]:
         except Exception as exc:  # noqa: BLE001
             print(f"warning: GitHub project discovery ({spec.get('category')}): {exc}", file=sys.stderr)
             continue
-        category = spec.get("category", "开源项目")
+        default_category = spec.get("category", "开源项目")
         minimum_stars = int(spec.get("minimumStars", 100))
         for repository in payload.get("items", [])[:int(spec.get("maxItems", 4))]:
             stars = int(repository.get("stargazers_count", 0))
@@ -291,6 +292,7 @@ def collect_github(config: dict) -> list[dict]:
             title = repository.get("full_name", "")
             link = repository.get("html_url", "")
             description = clean_text(repository.get("description") or "仓库近期保持活跃，建议打开 README 与提交记录进一步判断用途。")
+            category = infer_category(default_category, title, description)
             language = repository.get("language") or "未标注"
             license_name = (repository.get("license") or {}).get("spdx_id") or "未标注"
             summary = f"{description}（★ {stars:,}，主要语言：{language}）"
@@ -329,6 +331,21 @@ def collect_github(config: dict) -> list[dict]:
 
 def normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", title.lower())
+
+
+def chinese_char_count(value: object) -> int:
+    return len(re.findall(r"[\u4e00-\u9fff]", str(value or "")))
+
+
+def is_chinese_report(item: dict) -> bool:
+    sections = item.get("briefSections", [])
+    return (
+        chinese_char_count(item.get("title")) >= 2
+        and chinese_char_count(item.get("summary")) >= 45
+        and len(sections) == 5
+        and sum(chinese_char_count(section.get("body")) for section in sections) >= 350
+        and all(chinese_char_count(section.get("body")) >= 50 for section in sections)
+    )
 
 
 def diversify(collected: list[dict], maximum: int, per_source: int) -> list[dict]:
@@ -418,10 +435,10 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"title", "summary", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
+    allowed = {"title", "summary", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore"}
     enriched_count = 0
-    for start in range(0, len(items), 3):
-        batch = items[start:start + 3]
+    for start in range(0, len(items), AI_BATCH_SIZE):
+        batch = items[start:start + AI_BATCH_SIZE]
         material = [
             {
                 "id": item["id"],
@@ -438,17 +455,19 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             for item in batch
         ]
         prompt = (
-            "你是一名严谨的中文科技记者，读者了解 AI 不多。只依据给定的原始材料，不补造事实，也不要把来源网页中的导航、广告或推荐内容当正文。"
-            "先按原文的事实顺序压缩长文，再根据 category 采用固定报道结构，生成 briefSections（严格为5个对象，每个含 title 和 body，"
-            "每段正文至少90个中文字符，总计550-900个中文字符；必须尽量提取原文中可核查的具体对象、时间、方法、结果或范围，"
-            "每段是连贯报道，不是关键词堆砌）："
-            "重要研究=研究背景/研究要解决的问题/方法与实验思路/主要结果与核心贡献/证据边界；"
-            "开源项目=它想解决什么问题/项目怎样工作/目前提供了什么/适合谁关注/成熟度、成本与风险；"
-            "大模型=发布信息与适用范围/这次更新了什么/能力和使用方式的变化/行业背景/限制与待验证问题；"
-            "Agent=任务与使用场景/Agent怎样完成任务/关键能力与流程/可能带来的变化/可靠性、权限与失败风险；"
-            "其他新闻=新闻导语/事件经过/参与方、时间与地点或范围/背景与原因/影响与下一步。"
-            "论文必须提取方法、实验或结果，不能用产业新闻模板；新闻必须像记者报道事件，不能用论文模板。来源未说明的内容明确写未说明。"
-            "另生成 title、summary(80-140字)、keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch。避免各字段重复同一句话。"
+            "你是面向普通读者的中文 AI 科技记者。所有标题、摘要和正文必须用中文，产品名、模型名和必要术语可保留英文。"
+            "只依据给定材料，不补造事实。读者第一眼最想知道的是：它是什么、做到了什么、核心贡献是什么、怎样实现、对谁有用。"
+            "不要先写发布日期、来源、Star 数、筛选逻辑、置信度或行业套话；这些只有与贡献直接相关时才可在后文简短出现。"
+            "summary 用90-150个中文字符直接给出结论，先说做到什么和贡献，不复述标题。"
+            "briefSections 严格为5段，每段至少80个中文字符，总计500-850个中文字符，使用以下结构："
+            "重要研究=研究结论/核心贡献/方法与实验/结果意味着什么/证据边界；"
+            "开源项目=它是什么，做到了什么/核心贡献/它怎样工作/谁会用到/成熟度与限制；"
+            "大模型=这次真正带来了什么/核心能力与改进/怎样使用/对谁有影响/限制与待验证问题；"
+            "Agent=它能完成什么任务/关键贡献/它怎样行动/实际价值/可靠性与权限风险；"
+            "其他新闻=发生了什么/关键变化/事件经过/会带来什么影响/接下来要看什么。"
+            "不得把英文原文整句复制进中文正文，不得用“值得关注”“行业正在发展”等空话凑字。"
+            "另生成中文 title、keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch，避免字段间重复。"
+            "再给 technicalRelevanceScore 和 innovationScore，均为0到1；娱乐、人物花边、纯营销或只有融资信息的技术相关性必须低于0.45。"
             "返回严格 JSON 对象，格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
@@ -493,13 +512,18 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                             section for section in value
                             if isinstance(section, dict) and section.get("title") and section.get("body")
                         ] if isinstance(value, list) else []
-                        total_chars = sum(len(section["body"]) for section in valid_sections)
-                        if len(valid_sections) == 5 and total_chars >= 450 and all(len(section["body"]) >= 65 for section in valid_sections):
+                        total_chinese = sum(chinese_char_count(section["body"]) for section in valid_sections)
+                        if len(valid_sections) == 5 and total_chinese >= 350 and all(chinese_char_count(section["body"]) >= 50 for section in valid_sections):
                             item[key] = valid_sections
                             changed = True
-                    elif key in allowed and value:
-                        item[key] = value
+                    elif key in {"technicalRelevanceScore", "innovationScore"} and isinstance(value, (int, float)):
+                        item[key] = max(0.0, min(1.0, float(value)))
                         changed = True
+                    elif key in allowed and value:
+                        minimum_chinese = 2 if key == "title" else 45 if key == "summary" else 0
+                        if not isinstance(value, str) or chinese_char_count(value) >= minimum_chinese:
+                            item[key] = value
+                            changed = True
                 if changed:
                     enriched_count += 1
                 item["whyItMatters"] = item.get("impact", item["whyItMatters"])
@@ -508,8 +532,8 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                     f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
                 )
                 item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
-            if start + 3 < len(items):
-                time.sleep(15)
+            if start + AI_BATCH_SIZE < len(items):
+                time.sleep(25)
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
     return items, enriched_count
@@ -549,6 +573,21 @@ def main() -> int:
         item.pop("sourceMaterial", None)
         item.pop("defaultBranch", None)
     ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
+    if ai_requested:
+        items = [
+            item for item in items
+            if is_chinese_report(item)
+            and float(item.get("technicalRelevanceScore", 0.75)) >= 0.55
+            and float(item.get("innovationScore", 0.60)) >= 0.35
+        ]
+        items = balance_categories(items, int(config.get("maxItems", 30)), minimums)
+        core_coverage_ok = all(
+            sum(item.get("category") == category for item in items) >= 2
+            for category in ("大模型", "Agent", "重要研究", "开源项目")
+        )
+        if (len(items) < 10 or not core_coverage_ok) and current.get("items"):
+            print("warning: Chinese technical edition did not meet coverage; preserving the previous edition", file=sys.stderr)
+            return 0
     if ai_requested and enriched_count < max(1, len(items) // 2) and current.get("items"):
         print("warning: Chinese editorial enrichment was incomplete; preserving the previous edition", file=sys.stderr)
         return 0

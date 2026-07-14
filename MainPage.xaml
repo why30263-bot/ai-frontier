@@ -49,7 +49,7 @@
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
-            <NavigationViewItem Content="偏好说明" Tag="偏好">
+            <NavigationViewItem Content="设置" Tag="偏好">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>
@@ -76,7 +76,6 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="AI 前沿" Style="{StaticResource TitleTextBlockStyle}" />
                             <TextBlock Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Text="{x:Bind ViewModel.ViewExplanation, Mode=OneWay}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -137,7 +136,6 @@
 
                                         <StackPanel Grid.Column="1" Padding="10,14,18,14" Spacing="7">
                                             <TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{x:Bind HeatLabel}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" />
                                             <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
                                             <TextBlock Text="{x:Bind Summary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
                                             <Grid ColumnSpacing="8">
@@ -170,20 +168,17 @@
                     BorderThickness="1"
                     CornerRadius="18">
                     <Grid>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto">
                             <StackPanel Padding="20" Spacing="16">
                                 <Button x:Name="CompactBackButton" Content="← 返回新闻流" Click="CompactBackButton_Click" Visibility="Collapsed" HorizontalAlignment="Left" />
 
-                                <Border Height="210" Background="{Binding SelectedItem.BrandBrush}" CornerRadius="14">
+                                <Border Height="120" Background="{Binding SelectedItem.BrandBrush}" CornerRadius="14">
                                     <Grid>
-                                        <Ellipse Width="132" Height="132" Fill="#20FFFFFF" />
-                                        <Image Source="{Binding SelectedItem.LogoSource}" Width="82" Height="82" Stretch="Uniform" />
+                                        <Ellipse Width="86" Height="86" Fill="#20FFFFFF" />
+                                        <Image Source="{Binding SelectedItem.LogoSource}" Width="52" Height="52" Stretch="Uniform" />
                                         <StackPanel Margin="16" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="8">
                                             <Border Background="#CC000000" Padding="8,4" CornerRadius="5">
                                                 <TextBlock Text="{Binding SelectedItem.Category}" Foreground="White" FontWeight="SemiBold" />
-                                            </Border>
-                                            <Border Background="#CC000000" Padding="8,4" CornerRadius="5">
-                                                <TextBlock Text="{Binding SelectedItem.Confidence}" Foreground="White" />
                                             </Border>
                                         </StackPanel>
                                     </Grid>
@@ -191,21 +186,9 @@
 
                                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="{Binding SelectedItem.HeatLabel}" Message="{Binding SelectedItem.HeatDisclosure}" />
                                 <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="17" TextWrapping="Wrap" LineHeight="27" />
 
-                                <InfoBar
-                                    IsOpen="True"
-                                    IsClosable="False"
-                                    Severity="Informational"
-                                    Title="为什么值得看"
-                                    Message="{Binding SelectedItem.WhyItMatters}" />
-
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="完整报道" FontSize="22" FontWeight="SemiBold" />
-                                    <TextBlock Text="按资讯类型压缩原文重点，并保持事实展开顺序" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                </StackPanel>
                                 <ItemsControl ItemsSource="{Binding SelectedItem.BriefSections}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:BriefSection">
@@ -218,7 +201,7 @@
                                 </ItemsControl>
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                                <TextBlock Text="核查要点" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="关键信息" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.KeyFacts}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -236,7 +219,7 @@
 
                                 <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="报道边界" Message="{Binding SelectedItem.Limitations}" />
 
-                                <TextBlock Text="来源链" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="原始来源" Style="{StaticResource SubtitleTextBlockStyle}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.SourceTrail}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -286,20 +269,14 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Center" Spacing="18" Padding="0,0,12,20">
                         <FontIcon Glyph="&#xE713;" FontSize="40" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
-                        <TextBlock Text="推荐偏好如何工作" Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" />
-                        <TextBlock Text="{x:Bind ViewModel.PreferenceSummary, Mode=OneWay}" FontSize="18" TextAlignment="Center" TextWrapping="Wrap" />
-                        <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="不会形成信息茧房" Message="偏好只影响普通内容的排序和解释深度。重大模型发布、安全事件和高影响研究仍会保留，事实核查门槛不会因为点击而降低。" />
-                        <TextBlock Text="工作流偏好文件" Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <TextBox Text="{x:Bind ViewModel.WorkflowProfilePath, Mode=OneWay}" IsReadOnly="True" />
+                        <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" />
 
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Text="本机 Codex 辅助阅读" Style="{StaticResource SubtitleTextBlockStyle}" />
-                        <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="Codex 是可选增强" Message="接入后，应用只在你主动点击时把当前资讯写入本机专用工作区，并打开 Codex 辅助分析。采集、中文简报和更新均不依赖 Codex。" />
                         <TextBlock Text="{x:Bind ViewModel.CodexStatus, Mode=OneWay}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="接入本机 Codex" Click="ConnectCodexButton_Click" />
                         </StackPanel>
-                        <TextBox Text="{x:Bind ViewModel.CodexWorkspacePath, Mode=OneWay}" IsReadOnly="True" Header="Codex 专用工作区" />
 
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Text="版本更新" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -308,8 +285,6 @@
                             <Button Content="立即检查更新" Click="CheckUpdatesButton_Click" />
                             <Button Content="恢复更新提醒" Click="ResetUpdatePromptsButton_Click" />
                         </StackPanel>
-                        <TextBlock Text="固定发布位置：https://github.com/why30263-bot/ai-frontier/releases/latest。无论是否接入 Codex，应用都会定时检查。发现新版时可选择立即安装、自动更新、跳过当前版本或不再弹窗。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <TextBlock Text="评分映射：5 星明显提高同类权重，4 星轻微提高，3 星保持，1–2 星降低。所有权重限制在 0.2–2.0。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     </ScrollViewer>
                 </Border>

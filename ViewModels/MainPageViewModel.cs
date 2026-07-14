@@ -75,9 +75,14 @@ public partial class MainPageViewModel : ObservableObject
         _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
         PreferenceSummary = BuildPreferenceSummary(_profile);
         ApplyFilter();
+        CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
+        _ = DetectCodexAsync();
+    }
+
+    private async Task DetectCodexAsync()
+    {
         var codex = await _codexIntegrationService.GetStatusAsync();
         CodexStatus = codex.Status;
-        CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
     }
 
     public async Task<UpdateCheckResult> CheckForUpdatesAsync()
