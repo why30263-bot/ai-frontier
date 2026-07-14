@@ -171,6 +171,65 @@ public sealed class NewsService
             Environment.NewLine + Environment.NewLine,
             item.BriefSections.Select(section => $"{section.Title}{Environment.NewLine}{section.Body}"));
         item.ReadMinutes = Math.Max(item.ReadMinutes, Math.Clamp(item.FullBrief.Length / 300 + 2, 3, 8));
+        EnrichTrendSignals(item);
+    }
+
+    private static void EnrichTrendSignals(NewsItem item)
+    {
+        var sourceKind = PreferenceService.NormalizeSource(item);
+        item.IndependentSourceCount = Math.Max(item.IndependentSourceCount, Math.Max(1, item.SourceTrail.Count));
+        item.IsPrimarySourceVerified = item.IsPrimarySourceVerified ||
+            sourceKind is "官方公告" or "论文原文" or "GitHub";
+
+        if (item.SourceQualityScore <= 0)
+        {
+            item.SourceQualityScore = Math.Clamp(
+                (item.IsPrimarySourceVerified ? 0.65 : 0.35) +
+                Math.Min(0.25, (item.IndependentSourceCount - 1) * 0.08) +
+                (item.Confidence.Contains("高", StringComparison.OrdinalIgnoreCase) ? 0.10 : 0), 0, 1);
+        }
+        if (item.InnovationScore <= 0)
+        {
+            var noveltyTerms = new[] { "发布", "首次", "新", "突破", "开源", "方法", "基准", "刷新", "agent", "模型" };
+            var matches = noveltyTerms.Count(term =>
+                item.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.Summary.Contains(term, StringComparison.OrdinalIgnoreCase));
+            item.InnovationScore = Math.Clamp(0.48 + matches * 0.07 +
+                (item.Category is "重要研究" or "大模型" or "Agent" ? 0.08 : 0), 0, 1);
+        }
+        if (item.TechnicalRelevanceScore <= 0)
+        {
+            item.TechnicalRelevanceScore = item.Category switch
+            {
+                "重要研究" or "大模型" or "Agent" or "开源项目" => 0.90,
+                "产业动态" => 0.68,
+                _ => 0.58
+            };
+        }
+        if (item.FreshnessScore <= 0)
+        {
+            var ageHours = DateTimeOffset.TryParse(item.PublishedAt, out var published)
+                ? Math.Max(0, (DateTimeOffset.Now - published).TotalHours)
+                : 36;
+            item.FreshnessScore = Math.Exp(-Math.Log(2) * ageHours / 24d);
+        }
+
+        if (item.HotScore <= 0)
+        {
+            item.HotScore = item.HasDiscussionMetrics
+                ? 100 * (0.40 * item.DiscussionScore + 0.15 * item.VelocityScore +
+                    0.15 * item.SourceQualityScore + 0.15 * item.InnovationScore +
+                    0.10 * item.TechnicalRelevanceScore + 0.05 * item.FreshnessScore)
+                : 100 * (0.35 * item.SourceQualityScore + 0.35 * item.InnovationScore +
+                    0.20 * item.TechnicalRelevanceScore + 0.10 * item.FreshnessScore);
+            item.HotScore = Math.Round(item.HotScore, 1);
+        }
+        if (string.IsNullOrWhiteSpace(item.HeatReason))
+        {
+            var verification = item.IsPrimarySourceVerified ? "已核查一手来源" : "目前为可信二手来源";
+            item.HeatReason = $"{verification}，{item.IndependentSourceCount} 组独立来源；统计截至 {DateTimeOffset.Now:MM-dd HH:mm}。";
+        }
+        item.HeatMeasuredAt ??= DateTimeOffset.Now;
     }
 
     private static List<BriefSection> BuildBriefSections(NewsItem item)

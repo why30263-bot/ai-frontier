@@ -438,7 +438,8 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         prompt = (
             "你是一名严谨的中文科技记者，读者了解 AI 不多。只依据给定的原始材料，不补造事实，也不要把来源网页中的导航、广告或推荐内容当正文。"
             "先按原文的事实顺序压缩长文，再根据 category 采用固定报道结构，生成 briefSections（严格为5个对象，每个含 title 和 body，"
-            "总计450-800个中文字符，每段是连贯报道，不是关键词堆砌）："
+            "每段正文至少90个中文字符，总计550-900个中文字符；必须尽量提取原文中可核查的具体对象、时间、方法、结果或范围，"
+            "每段是连贯报道，不是关键词堆砌）："
             "重要研究=研究背景/研究要解决的问题/方法与实验思路/主要结果与核心贡献/证据边界；"
             "开源项目=它想解决什么问题/项目怎样工作/目前提供了什么/适合谁关注/成熟度、成本与风险；"
             "大模型=发布信息与适用范围/这次更新了什么/能力和使用方式的变化/行业背景/限制与待验证问题；"
@@ -478,7 +479,8 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                             section for section in value
                             if isinstance(section, dict) and section.get("title") and section.get("body")
                         ] if isinstance(value, list) else []
-                        if len(valid_sections) == 5:
+                        total_chars = sum(len(section["body"]) for section in valid_sections)
+                        if len(valid_sections) == 5 and total_chars >= 450 and all(len(section["body"]) >= 65 for section in valid_sections):
                             item[key] = valid_sections
                             changed = True
                     elif key in allowed and value:

@@ -41,6 +41,18 @@ public sealed class NewsItem
     public string Limitations { get; set; } = string.Empty;
     public string WhatToWatch { get; set; } = string.Empty;
     public List<string> SourceTrail { get; set; } = [];
+    public double HotScore { get; set; }
+    public double DiscussionScore { get; set; }
+    public double VelocityScore { get; set; }
+    public double SourceQualityScore { get; set; }
+    public double InnovationScore { get; set; }
+    public double TechnicalRelevanceScore { get; set; }
+    public double FreshnessScore { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public bool IsPrimarySourceVerified { get; set; }
+    public bool HasDiscussionMetrics { get; set; }
+    public string HeatReason { get; set; } = string.Empty;
+    public DateTimeOffset? HeatMeasuredAt { get; set; }
 
     [JsonIgnore]
     public SolidColorBrush BrandBrush => new(ParseHex(BrandColor));
@@ -58,6 +70,16 @@ public sealed class NewsItem
 
     [JsonIgnore]
     public string AccessibleTitle => $"{Category}，{Title}，来源 {SourceName}";
+
+    [JsonIgnore]
+    public string HeatLabel => HasDiscussionMetrics
+        ? $"综合热度 {HotScore:0}"
+        : $"趋势参考 {HotScore:0}";
+
+    [JsonIgnore]
+    public string HeatDisclosure => HasDiscussionMetrics
+        ? $"综合公开讨论、升温速度、来源质量、创新性和新鲜度。{HeatReason}"
+        : $"当前未取得稳定的跨平台讨论快照，本分数只根据可核查来源、创新性、技术相关性和新鲜度计算。{HeatReason}";
 
     private static Color ParseHex(string value)
     {
@@ -88,6 +110,19 @@ public sealed class PreferenceProfile
     public List<string> BlockedSources { get; set; } = [];
     public List<string> BlockedTopics { get; set; } = [];
     public string PromptHint { get; set; } = string.Empty;
+    public Dictionary<string, ArticlePreference> ArticlePreferences { get; set; } = [];
+    public List<string> BookmarkedIds { get; set; } = [];
+    public int ExplicitFeedbackCount { get; set; }
+}
+
+public sealed class ArticlePreference
+{
+    public bool DetailOpened { get; set; }
+    public bool SourceOpened { get; set; }
+    public bool CodexOpened { get; set; }
+    public bool IsBookmarked { get; set; }
+    public string Reaction { get; set; } = string.Empty;
+    public double? Rating { get; set; }
 }
 
 public sealed record FeedbackEvent(

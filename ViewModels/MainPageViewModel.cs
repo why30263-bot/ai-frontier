@@ -18,7 +18,11 @@ public partial class MainPageViewModel : ObservableObject
     private int _batchStart;
     private string _activeCategory = "全部";
     private bool _savedOnly;
+    private bool _trendMode;
+    private bool _recommendationMode;
     private readonly HashSet<string> _bookmarkedIds = [];
+    private readonly HashSet<string> _openedThisSession = [];
+    private PreferenceProfile _profile = new();
 
     public ObservableCollection<NewsItem> Items { get; } = [];
 
@@ -55,6 +59,9 @@ public partial class MainPageViewModel : ObservableObject
     [ObservableProperty]
     public partial string BatchLabel { get; set; } = "每批 10 条";
 
+    [ObservableProperty]
+    public partial string ViewExplanation { get; set; } = "编辑筛选后的 AI 重要资讯；五类内容保持基本覆盖。";
+
     public async Task LoadAsync()
     {
         var edition = await _newsService.LoadAsync();
@@ -63,8 +70,10 @@ public partial class MainPageViewModel : ObservableObject
         EditionLabel = $"{edition.EditionDate} · 过去 {edition.WindowHours} 小时 · {edition.Items.Count} 条经筛选信息";
         WorkflowProfilePath = _preferenceService.WorkflowProfilePath;
 
-        var profile = await _preferenceService.LoadAsync();
-        PreferenceSummary = BuildPreferenceSummary(profile);
+        _profile = await _preferenceService.LoadAsync();
+        _bookmarkedIds.Clear();
+        _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
+        PreferenceSummary = BuildPreferenceSummary(_profile);
         ApplyFilter();
         var codex = await _codexIntegrationService.GetStatusAsync();
         CodexStatus = codex.Status;
@@ -106,6 +115,10 @@ public partial class MainPageViewModel : ObservableObject
             return;
         }
         var result = await _codexIntegrationService.AnalyzeAsync(SelectedItem);
+        if (result.IsConnected)
+        {
+            _profile = await _preferenceService.RecordAsync(SelectedItem, "codex-open");
+        }
         CodexStatus = result.Status;
         ShowFeedback(result.Status);
     }
@@ -114,12 +127,29 @@ public partial class MainPageViewModel : ObservableObject
 
     public void SetCategory(string category, bool savedOnly = false)
     {
-        _activeCategory = category;
+        _trendMode = category == "三日热榜";
+        _recommendationMode = category == "为你推荐";
+        _activeCategory = _trendMode || _recommendationMode ? "全部" : category;
         _savedOnly = savedOnly;
+        ViewExplanation = _trendMode
+            ? "三日趋势榜 · 真实讨论指标不足时明确显示“趋势参考”，不伪造转发或评论量。"
+            : _recommendationMode
+                ? "为你推荐 · 编辑质量门槛和类别覆盖不变，偏好只参与重排，并保留探索内容。"
+                : savedOnly
+                    ? "收藏只保存在本机，不会上传阅读历史。"
+                    : "编辑筛选后的 AI 重要资讯；五类内容保持基本覆盖。";
         ApplyFilter();
     }
 
-    public void Select(NewsItem item) => SelectedItem = item;
+    public async Task SelectAsync(NewsItem item)
+    {
+        SelectedItem = item;
+        if (_openedThisSession.Add(item.Id))
+        {
+            _profile = await _preferenceService.RecordAsync(item, "detail");
+            PreferenceSummary = BuildPreferenceSummary(_profile);
+        }
+    }
 
     public void NextBatch()
     {
@@ -140,26 +170,17 @@ public partial class MainPageViewModel : ObservableObject
             return;
         }
 
+        _profile = await _preferenceService.RecordAsync(SelectedItem, action, score);
+        _bookmarkedIds.Clear();
+        _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
+        PreferenceSummary = BuildPreferenceSummary(_profile);
         if (action == "bookmark")
         {
-            if (!_bookmarkedIds.Add(SelectedItem.Id))
-            {
-                _bookmarkedIds.Remove(SelectedItem.Id);
-                ShowFeedback("已取消收藏");
-            }
-            else
-            {
-                ShowFeedback("已收藏；收藏不会强行改变推荐主题");
-            }
-            if (_savedOnly)
-            {
-                ApplyFilter();
-            }
+            var saved = _bookmarkedIds.Contains(SelectedItem.Id);
+            ShowFeedback(saved ? "已收藏并保存在本机" : "已取消收藏");
+            ApplyFilter();
             return;
         }
-
-        var profile = await _preferenceService.RecordAsync(SelectedItem, action, score);
-        PreferenceSummary = BuildPreferenceSummary(profile);
         var message = action switch
         {
             "like" => "已记录喜欢，会适度提高同主题内容排序",
@@ -175,7 +196,10 @@ public partial class MainPageViewModel : ObservableObject
     {
         if (SelectedItem is not null && Uri.TryCreate(SelectedItem.SourceUrl, UriKind.Absolute, out var uri))
         {
-            await Launcher.LaunchUriAsync(uri);
+            if (await Launcher.LaunchUriAsync(uri))
+            {
+                _profile = await _preferenceService.RecordAsync(SelectedItem, "source-open");
+            }
         }
     }
 
@@ -186,12 +210,23 @@ public partial class MainPageViewModel : ObservableObject
         var filtered = _allItems.Where(item =>
             (_activeCategory == "全部" || item.Category == _activeCategory) &&
             (!_savedOnly || _bookmarkedIds.Contains(item.Id)) &&
+            (!_trendMode || !DateTimeOffset.TryParse(item.PublishedAt, out var published) ||
+                published >= DateTimeOffset.Now.AddHours(-72)) &&
             (query.Length == 0 ||
              item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
              item.Summary.Contains(query, StringComparison.OrdinalIgnoreCase) ||
              item.Tags.Any(tag => tag.Contains(query, StringComparison.OrdinalIgnoreCase))));
 
-        _filteredItems = BalanceForHome(filtered.ToList());
+        var filteredList = filtered.ToList();
+        if (_trendMode)
+        {
+            filteredList = filteredList.OrderByDescending(item => item.HotScore).ToList();
+        }
+        else if (_recommendationMode)
+        {
+            filteredList = RankForUser(filteredList);
+        }
+        _filteredItems = BalanceForHome(filteredList);
         _batchStart = 0;
         RenderBatch(selectedId);
     }
@@ -240,6 +275,33 @@ public partial class MainPageViewModel : ObservableObject
         }
         front.AddRange(remaining);
         return front;
+    }
+
+    private List<NewsItem> RankForUser(List<NewsItem> items)
+    {
+        if (_profile.ExplicitFeedbackCount <= 0 || items.Count < 2)
+        {
+            return items;
+        }
+
+        var personalStrength = Math.Min(0.18, 0.18 * _profile.ExplicitFeedbackCount / 8d);
+        return items.Select((item, index) => new
+            {
+                Item = item,
+                Score = (1d - personalStrength) * (1d - index / (double)Math.Max(1, items.Count)) +
+                    personalStrength * PersonalAffinity(item)
+            })
+            .OrderByDescending(entry => entry.Score)
+            .Select(entry => entry.Item)
+            .ToList();
+    }
+
+    private double PersonalAffinity(NewsItem item)
+    {
+        var topic = _profile.TopicWeights.TryGetValue(item.Category, out var topicWeight) ? topicWeight : 1d;
+        var sourceKey = PreferenceService.NormalizeSource(item);
+        var source = _profile.SourceWeights.TryGetValue(sourceKey, out var sourceWeight) ? sourceWeight : 1d;
+        return Math.Clamp((topic * 0.72 + source * 0.28) / 2d, 0.1, 1.0);
     }
 
     private void ShowFeedback(string message)
