@@ -17,6 +17,8 @@ import json
 import os
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -466,7 +468,19 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             method="POST",
         )
         try:
-            response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
+            response = None
+            for attempt in range(3):
+                try:
+                    response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
+                    break
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 429 or attempt == 2:
+                        raise
+                    delay = 25 * (attempt + 1)
+                    print(f"warning: AI rate limited; retrying in {delay}s", file=sys.stderr)
+                    time.sleep(delay)
+            if response is None:
+                raise RuntimeError("AI enrichment returned no response")
             content = response["choices"][0]["message"]["content"].strip()
             content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
             enriched = json.loads(content).get("items", [])
@@ -494,6 +508,8 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                     f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
                 )
                 item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
+            if start + 3 < len(items):
+                time.sleep(15)
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
     return items, enriched_count
