@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "targetItems": { "minimum": 12, "preferred": 15, "maximum": 18 },
   "categories": ["大模型", "Agent", "开源项目", "重要研究", "产业动态", "人物观点"],
-  "requiredDetailFields": ["keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
+  "requiredDetailFields": ["fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
   "rules": [
     "标题只描述已确认事件，不使用震惊、颠覆、淘汰等夸张词。",
     "摘要回答发生了什么，详细页再解释背景和意义。",

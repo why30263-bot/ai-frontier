@@ -24,6 +24,7 @@ public sealed class NewsItem
     public string LogoAsset { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
+    public string FullBrief { get; set; } = string.Empty;
     public string PublishedAt { get; set; } = string.Empty;
     public string SourceName { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;

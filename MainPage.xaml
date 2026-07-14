@@ -130,7 +130,14 @@
                                             <TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
                                             <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
                                             <TextBlock Text="{x:Bind Summary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
-                                            <TextBlock Text="{x:Bind ReadingMeta}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{x:Bind ReadingMeta}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="查看详情" Click="CardDetailButton_Click" Padding="10,4" AutomationProperties.Name="查看资讯详情" />
+                                            </Grid>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -175,6 +182,10 @@
                                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="17" TextWrapping="Wrap" LineHeight="27" />
+
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <TextBlock Text="事件全貌（整理版）" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="{Binding SelectedItem.FullBrief}" TextWrapping="Wrap" LineHeight="27" FontSize="16" />
 
                                 <InfoBar
                                     IsOpen="True"
@@ -240,7 +251,14 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <Button Content="打开原始来源 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开" />
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="使用 Codex 深度分析" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读" />
+                                    <Button Grid.Column="1" Content="打开原始网站 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开原始来源" />
+                                </Grid>
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
@@ -253,17 +271,35 @@
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     CornerRadius="18"
                     Padding="32">
-                    <StackPanel MaxWidth="760" HorizontalAlignment="Center" Spacing="18">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel MaxWidth="760" HorizontalAlignment="Center" Spacing="18" Padding="0,0,12,20">
                         <FontIcon Glyph="&#xE713;" FontSize="40" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
                         <TextBlock Text="推荐偏好如何工作" Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" />
                         <TextBlock Text="{x:Bind ViewModel.PreferenceSummary, Mode=OneWay}" FontSize="18" TextAlignment="Center" TextWrapping="Wrap" />
                         <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="不会形成信息茧房" Message="偏好只影响普通内容的排序和解释深度。重大模型发布、安全事件和高影响研究仍会保留，事实核查门槛不会因为点击而降低。" />
                         <TextBlock Text="工作流偏好文件" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBox Text="{x:Bind ViewModel.WorkflowProfilePath, Mode=OneWay}" IsReadOnly="True" />
+
+                        <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                        <TextBlock Text="本机 Codex 辅助阅读" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="Codex 是可选增强" Message="接入后，应用只在你主动点击时把当前资讯写入本机专用工作区，并打开 Codex 辅助分析。采集、中文简报和更新均不依赖 Codex。" />
+                        <TextBlock Text="{x:Bind ViewModel.CodexStatus, Mode=OneWay}" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="接入本机 Codex" Click="ConnectCodexButton_Click" />
+                        </StackPanel>
+                        <TextBox Text="{x:Bind ViewModel.CodexWorkspacePath, Mode=OneWay}" IsReadOnly="True" Header="Codex 专用工作区" />
+
+                        <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Text="版本更新" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="立即检查更新" Click="CheckUpdatesButton_Click" />
+                            <Button Content="恢复更新提醒" Click="ResetUpdatePromptsButton_Click" />
+                        </StackPanel>
+                        <TextBlock Text="固定发布位置：https://github.com/why30263-bot/ai-frontier/releases/latest。无论是否接入 Codex，应用都会定时检查。发现新版时可选择立即安装、自动更新、跳过当前版本或不再弹窗。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <TextBlock Text="评分映射：5 星明显提高同类权重，4 星轻微提高，3 星保持，1–2 星降低。所有权重限制在 0.2–2.0。" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </NavigationView.Content>

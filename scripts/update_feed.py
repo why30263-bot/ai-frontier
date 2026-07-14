@@ -85,7 +85,7 @@ def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
         "重要研究": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
         "产业动态": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
     }
-    return {
+    analysis = {
         "keyFacts": [f"原始信息来自 {source_name}。", summary],
         "context": contexts.get(category, "该条目处于模型能力、Agent 工程化和开源生态持续演进的背景中。"),
         "beginnerExplainer": explainers.get(category, "这条信息反映 AI 产品、研究或开发生态的一次公开更新。"),
@@ -93,6 +93,15 @@ def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
         "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
         "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。",
     }
+    analysis["fullBrief"] = (
+        f"时间、参与方与范围：这条信息由 {source_name} 的公开信息源发布或记录；具体时间以条目日期为准。"
+        "如果原始摘要没有说明线下地点或开放地区，这里不作猜测。\n\n"
+        f"具体发生了什么：{summary}\n\n"
+        f"背景与原因：{analysis['context']}\n\n"
+        f"目前能看到的影响：{analysis['impact']}\n\n"
+        f"阅读边界：{analysis['limitations']} 这是一份基于当前公开材料的整理，不把论文结论、项目热度或厂商宣传自动当成普遍成立的事实。"
+    )
+    return analysis
 
 
 def parse_feed(source: dict) -> list[dict]:
@@ -128,6 +137,7 @@ def parse_feed(source: dict) -> list[dict]:
             "logoAsset": source.get("logoAsset", ""),
             "title": title.strip(),
             "summary": summary,
+            "sourceMaterial": description[:2200],
             "publishedAt": date.astimezone().date().isoformat(),
             "sourceName": source["name"],
             "sourceUrl": link,
@@ -193,6 +203,7 @@ def collect_github(config: dict) -> list[dict]:
             "logoAsset": "Assets/Brands/github.svg",
             "title": title,
             "summary": summary,
+            "sourceMaterial": f"{description} Star: {stars:,}; 主要语言: {language}; 许可证: {license_name}; 最近推送: {repository.get('pushed_at', '未知')}。",
             "publishedAt": (repository.get("pushed_at") or dt.datetime.now(dt.timezone.utc).isoformat())[:10],
             "sourceName": "GitHub 项目发现",
             "sourceUrl": link,
@@ -274,18 +285,30 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"title", "summary", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
+    allowed = {"title", "summary", "fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
     enriched_count = 0
     for start in range(0, len(items), 6):
         batch = items[start:start + 6]
         material = [
-            {"id": item["id"], "category": item["category"], "title": item["title"], "source": item["sourceName"], "sourceSummary": item["summary"]}
+            {
+                "id": item["id"],
+                "category": item["category"],
+                "title": item["title"],
+                "source": item["sourceName"],
+                "publishedAt": item.get("publishedAt", ""),
+                "sourceMaterial": item.get("sourceMaterial") or {
+                    "summary": item.get("summary", ""),
+                    "keyFacts": item.get("keyFacts", []),
+                    "context": item.get("context", ""),
+                },
+            }
             for item in batch
         ]
         prompt = (
             "你是面向 AI 初学者的严谨中文科技编辑。只依据给定标题、来源摘要和来源身份，不补造事实。"
-            "把 title 改写为自然、准确的中文标题，并生成：summary(60-120字)、keyFacts(2-4条)、context、beginnerExplainer、impact、"
-            "limitations、whatToWatch。避免重复同一句话，明确区分事实、解释和判断。"
+            "把 title 改写为自然、准确的中文标题，并生成：summary(60-120字)、fullBrief(350-600字，分3-5段，明确交代"
+            "什么人或机构、时间、地点或适用范围、做了什么、结果与影响；来源未说明的要明确写未说明，不能猜测)、"
+            "keyFacts(2-4条)、context、beginnerExplainer、impact、limitations、whatToWatch。避免重复同一句话，明确区分事实、解释和判断。"
             "返回严格 JSON 对象，格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
@@ -352,6 +375,8 @@ def main() -> int:
         int(config.get("maxItemsPerSource", 4)),
     )
     items, enriched_count = enrich_with_ai(items)
+    for item in items:
+        item.pop("sourceMaterial", None)
     ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
     if ai_requested and enriched_count < max(1, len(items) // 2) and current.get("items"):
         print("warning: Chinese editorial enrichment was incomplete; preserving the previous edition", file=sys.stderr)

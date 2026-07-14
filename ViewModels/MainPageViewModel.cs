@@ -11,6 +11,7 @@ public partial class MainPageViewModel : ObservableObject
     private readonly NewsService _newsService = new();
     private readonly PreferenceService _preferenceService = new();
     private readonly UpdateService _updateService = new();
+    private readonly CodexIntegrationService _codexIntegrationService = new();
     private readonly List<NewsItem> _allItems = [];
     private string _activeCategory = "全部";
     private bool _savedOnly;
@@ -42,6 +43,12 @@ public partial class MainPageViewModel : ObservableObject
     [ObservableProperty]
     public partial string UpdateStatus { get; set; } = "正在检查版本…";
 
+    [ObservableProperty]
+    public partial string CodexStatus { get; set; } = "正在检测本机 Codex…";
+
+    [ObservableProperty]
+    public partial string CodexWorkspacePath { get; set; } = string.Empty;
+
     public async Task LoadAsync()
     {
         var edition = await _newsService.LoadAsync();
@@ -53,11 +60,49 @@ public partial class MainPageViewModel : ObservableObject
         var profile = await _preferenceService.LoadAsync();
         PreferenceSummary = BuildPreferenceSummary(profile);
         ApplyFilter();
-        _ = CheckForUpdatesAsync();
+        var codex = await _codexIntegrationService.GetStatusAsync();
+        CodexStatus = codex.Status;
+        CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
     }
 
-    private async Task CheckForUpdatesAsync() =>
-        UpdateStatus = await _updateService.CheckAndStageAsync();
+    public async Task<UpdateCheckResult> CheckForUpdatesAsync()
+    {
+        var result = await _updateService.CheckAsync();
+        UpdateStatus = result.Status;
+        return result;
+    }
+
+    public async Task ApplyUpdateChoiceAsync(UpdateCheckResult update, UpdateChoice choice)
+    {
+        UpdateStatus = await _updateService.ApplyChoiceAsync(update, choice);
+        ShowFeedback(UpdateStatus);
+    }
+
+    public async Task ResetUpdatePromptsAsync()
+    {
+        UpdateStatus = await _updateService.ResetPromptPreferencesAsync();
+        ShowFeedback(UpdateStatus);
+    }
+
+    public async Task ConnectCodexAsync()
+    {
+        var result = await _codexIntegrationService.ConnectAsync();
+        CodexStatus = result.Status;
+        CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
+        ShowFeedback(result.Status);
+    }
+
+    public async Task AnalyzeWithCodexAsync()
+    {
+        if (SelectedItem is null)
+        {
+            ShowFeedback("请先选择一条资讯");
+            return;
+        }
+        var result = await _codexIntegrationService.AnalyzeAsync(SelectedItem);
+        CodexStatus = result.Status;
+        ShowFeedback(result.Status);
+    }
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 

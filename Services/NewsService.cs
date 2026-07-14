@@ -67,7 +67,8 @@ public sealed class NewsService
         {
             try
             {
-                var remote = await Http.GetFromJsonAsync<FeedConfiguration>(local.RemoteConfigUrl, JsonOptions);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var remote = await Http.GetFromJsonAsync<FeedConfiguration>(local.RemoteConfigUrl, JsonOptions, timeout.Token);
                 if (remote?.Feeds.Count > 0)
                 {
                     return remote;
@@ -89,7 +90,8 @@ public sealed class NewsService
         }
         try
         {
-            return await Http.GetFromJsonAsync<NewsEdition>(url, JsonOptions);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            return await Http.GetFromJsonAsync<NewsEdition>(url, JsonOptions, timeout.Token);
         }
         catch
         {
@@ -145,6 +147,42 @@ public sealed class NewsService
         {
             item.SourceTrail = [$"{item.SourceName}: {item.SourceUrl}"];
         }
+        item.FullBrief = string.IsNullOrWhiteSpace(item.FullBrief)
+            ? BuildFullBrief(item)
+            : item.FullBrief;
+        item.ReadMinutes = Math.Max(item.ReadMinutes, Math.Clamp(item.FullBrief.Length / 300 + 2, 3, 8));
+    }
+
+    private static string BuildFullBrief(NewsItem item)
+    {
+        var facts = item.KeyFacts
+            .Where(fact => !string.IsNullOrWhiteSpace(fact) &&
+                !fact.Equals(item.Summary, StringComparison.OrdinalIgnoreCase))
+            .Take(4)
+            .ToList();
+        var factText = facts.Count == 0
+            ? "当前公开材料没有提供更多可独立列出的细节，具体数据和条件需要回到原始页面核对。"
+            : string.Join("；", facts.Select(fact => fact.Trim().TrimEnd('。', '；') + "。"));
+        var scope = item.Category switch
+        {
+            "开源项目" => "影响范围主要是公开仓库、开发者社区以及可能采用该项目的团队",
+            "重要研究" => "影响范围首先是论文所定义的实验与研究场景，不能直接等同于成熟产品",
+            "大模型" => "影响范围取决于模型实际开放地区、调用方式、价格和使用限制",
+            "Agent" => "影响范围主要是多步骤任务、工具调用和自动化工作流",
+            _ => "具体地点或市场范围以原始来源披露为准；若原文没有说明，这里不作猜测"
+        };
+
+        return $"""
+            时间、参与方与范围：这条信息对应 {item.PublishedAt} 的公开资料，来源为 {item.SourceName}。{scope}。
+
+            具体发生了什么：{item.Summary.Trim()} {factText}
+
+            为什么会发生：{item.Context.Trim()}
+
+            目前能看到的影响：{item.Impact.Trim()} 这表示它可能改变相关产品、研究或开发工作的选择，但实际影响仍取决于功能是否真正开放、结果能否复现，以及真实用户是否持续采用。
+
+            阅读边界：{item.Limitations.Trim()} 因此，上述内容是根据当前公开材料整理出的事件全貌，不把论文结论、项目热度或厂商表述自动当成已经普遍成立的事实。
+            """;
     }
 
     private static HttpClient CreateClient()
