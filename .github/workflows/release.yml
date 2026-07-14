@@ -144,6 +144,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "${{ needs.verify-and-build.outputs.tag }}" `
             release-assets\AIFrontier-Setup.exe `
