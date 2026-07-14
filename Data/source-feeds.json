@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "remoteConfigUrl": "https://raw.githubusercontent.com/why30263-bot/ai-frontier/main/Data/source-feeds.json",
+  "remoteNewsUrl": "https://raw.githubusercontent.com/why30263-bot/ai-frontier/main/Data/news.json",
+  "refreshMinutes": 60,
+  "staleAfterHours": 18,
+  "maxItems": 18,
+  "maxItemsPerSource": 4,
+  "freshHours": 72,
+  "supplementDays": 7,
+  "githubDiscovery": {
+    "enabled": true,
+    "query": "topic:artificial-intelligence stars:>500",
+    "minimumStars": 500,
+    "maxItems": 4
+  },
+  "feeds": [
+    { "name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "category": "大模型", "brand": "OpenAI", "brandColor": "#111827", "logoAsset": "Assets/Brands/openai.svg", "trust": "官方公告" },
+    { "name": "Google AI", "url": "https://blog.google/technology/ai/rss/", "category": "大模型", "brand": "Google AI", "brandColor": "#1A73E8", "logoAsset": "", "trust": "官方公告" },
+    { "name": "Google DeepMind", "url": "https://deepmind.google/blog/rss.xml", "category": "重要研究", "brand": "DeepMind", "brandColor": "#0B57D0", "logoAsset": "", "trust": "官方公告" },
+    { "name": "GitHub AI & ML", "url": "https://github.blog/ai-and-ml/feed/", "category": "开源项目", "brand": "GitHub", "brandColor": "#24292F", "logoAsset": "Assets/Brands/github.svg", "trust": "官方博客" },
+    { "name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "category": "开源项目", "brand": "Hugging Face", "brandColor": "#FFB000", "logoAsset": "", "trust": "官方博客" },
+    { "name": "Microsoft AI", "url": "https://news.microsoft.com/source/topics/ai/feed/", "category": "产业动态", "brand": "Microsoft AI", "brandColor": "#0078D4", "logoAsset": "", "trust": "官方公告" },
+    { "name": "arXiv AI", "url": "https://export.arxiv.org/api/query?search_query=cat:cs.AI%20OR%20cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", "category": "重要研究", "brand": "arXiv", "brandColor": "#B31B1B", "logoAsset": "Assets/Brands/arxiv.svg", "trust": "论文原文" },
+    { "name": "TechCrunch AI", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "category": "产业动态", "brand": "TechCrunch", "brandColor": "#0A9E01", "logoAsset": "", "trust": "专业媒体" },
+    { "name": "The Verge AI", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "category": "产业动态", "brand": "The Verge", "brandColor": "#E3007F", "logoAsset": "", "trust": "专业媒体" },
+    { "name": "WIRED AI", "url": "https://www.wired.com/feed/tag/ai/latest/rss", "category": "产业动态", "brand": "WIRED", "brandColor": "#111111", "logoAsset": "", "trust": "专业媒体" }
+  ]
+}

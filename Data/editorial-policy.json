@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "targetItems": { "minimum": 12, "preferred": 15, "maximum": 18 },
+  "categories": ["大模型", "Agent", "开源项目", "重要研究", "产业动态", "人物观点"],
+  "requiredDetailFields": ["keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
+  "rules": [
+    "标题只描述已确认事件，不使用震惊、颠覆、淘汰等夸张词。",
+    "摘要回答发生了什么，详细页再解释背景和意义。",
+    "同一事件只保留一条主卡片，其他来源进入 sourceTrail。",
+    "社交平台只用于发现线索，正式条目必须回到原始来源核查。",
+    "偏好只影响普通内容排序，不得改变事实核查标准。",
+    "没有足够高质量事件时可以少于最低条数，不得用重复信息凑数。"
+  ]
+}

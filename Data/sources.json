@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "officialLabs": [
+    "OpenAI",
+    "OpenAIDevs",
+    "AnthropicAI",
+    "GoogleDeepMind",
+    "Alibaba_Qwen",
+    "Ali_TongyiLab",
+    "deepseek_ai",
+    "Kimi_Moonshot",
+    "MiniMax__AI",
+    "Zai_org",
+    "Baidu_Inc",
+    "ManusAI",
+    "huggingface",
+    "OpenRouterAI"
+  ],
+  "researchersAndBuilders": [
+    "AndrewNG",
+    "karpathy",
+    "ylecun",
+    "JeffDean",
+    "goodfellow_ian"
+  ],
+  "developerEcosystem": [
+    "lmstudio",
+    "cline",
+    "KwaiAICoder",
+    "cerebras",
+    "arena"
+  ],
+  "discoveryOnly": [
+    "vista8",
+    "karminski3",
+    "op7418",
+    "geekbb"
+  ],
+  "policy": {
+    "socialPostsAreLeadsOnly": true,
+    "requirePrimarySourceForPublication": true,
+    "allowRumors": false
+  }
+}
+
