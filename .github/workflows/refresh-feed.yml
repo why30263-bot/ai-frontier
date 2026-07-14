@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  models: read
 
 jobs:
   refresh:
@@ -19,9 +20,9 @@ jobs:
       - name: Collect official feeds
         run: python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json
         env:
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AI_API_BASE: ${{ vars.AI_API_BASE }}
-          AI_MODEL: ${{ vars.AI_MODEL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY || github.token }}
+          AI_API_BASE: ${{ vars.AI_API_BASE || 'https://models.github.ai/inference' }}
+          AI_MODEL: ${{ vars.AI_MODEL || 'openai/gpt-4.1' }}
       - name: Validate schema
         run: python -m json.tool Data/news.json > /dev/null
       - name: Commit changed feed

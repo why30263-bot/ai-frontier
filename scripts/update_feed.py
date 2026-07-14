@@ -265,16 +265,17 @@ def apply_freshness(items: list[dict], fresh_hours: int, supplement_days: int, t
     return [*fresh, *supplements]
 
 
-def enrich_with_ai(items: list[dict]) -> list[dict]:
+def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
     """Optionally enrich entries through any OpenAI-compatible chat endpoint."""
     api_key = os.getenv("AI_API_KEY", "").strip()
     api_base = os.getenv("AI_API_BASE", "").strip().rstrip("/")
     model = os.getenv("AI_MODEL", "").strip()
     if not (api_key and api_base and model):
-        return items
+        return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"summary", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
+    allowed = {"title", "summary", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
+    enriched_count = 0
     for start in range(0, len(items), 6):
         batch = items[start:start + 6]
         material = [
@@ -283,7 +284,7 @@ def enrich_with_ai(items: list[dict]) -> list[dict]:
         ]
         prompt = (
             "你是面向 AI 初学者的严谨中文科技编辑。只依据给定标题、来源摘要和来源身份，不补造事实。"
-            "为每条内容生成：summary(60-120字)、keyFacts(2-4条)、context、beginnerExplainer、impact、"
+            "把 title 改写为自然、准确的中文标题，并生成：summary(60-120字)、keyFacts(2-4条)、context、beginnerExplainer、impact、"
             "limitations、whatToWatch。避免重复同一句话，明确区分事实、解释和判断。"
             "返回严格 JSON 对象，格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
@@ -291,6 +292,7 @@ def enrich_with_ai(items: list[dict]) -> list[dict]:
         payload = json.dumps({
             "model": model,
             "temperature": 0.2,
+            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": "输出严谨、克制、可核查的中文 JSON。"},
                 {"role": "user", "content": prompt},
@@ -309,15 +311,19 @@ def enrich_with_ai(items: list[dict]) -> list[dict]:
             enriched = json.loads(content).get("items", [])
             by_id = {row.get("id"): row for row in enriched if isinstance(row, dict)}
             for item in batch:
+                changed = False
                 for key, value in by_id.get(item["id"], {}).items():
                     if key in allowed and value:
                         item[key] = value
+                        changed = True
+                if changed:
+                    enriched_count += 1
                 item["whyItMatters"] = item.get("impact", item["whyItMatters"])
                 item["details"] = item.get("keyFacts", item["details"])
                 item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
-    return items
+    return items, enriched_count
 
 
 def main() -> int:
@@ -345,7 +351,11 @@ def main() -> int:
         int(config.get("maxItems", 18)),
         int(config.get("maxItemsPerSource", 4)),
     )
-    items = enrich_with_ai(items)
+    items, enriched_count = enrich_with_ai(items)
+    ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
+    if ai_requested and enriched_count < max(1, len(items) // 2) and current.get("items"):
+        print("warning: Chinese editorial enrichment was incomplete; preserving the previous edition", file=sys.stderr)
+        return 0
     edition = {
         "schemaVersion": 1,
         "editionDate": dt.date.today().isoformat(),
