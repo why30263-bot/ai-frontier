@@ -29,6 +29,8 @@ public partial class MainPageViewModel : ObservableObject
     [ObservableProperty]
     public partial NewsItem? SelectedItem { get; set; }
 
+    partial void OnSelectedItemChanged(NewsItem? value) => UpdateSelectedFeedbackState();
+
     [ObservableProperty]
     public partial string EditionLabel { get; set; } = "正在读取今日简报…";
 
@@ -60,14 +62,30 @@ public partial class MainPageViewModel : ObservableObject
     public partial string BatchLabel { get; set; } = "每批 10 条";
 
     [ObservableProperty]
-    public partial string ViewExplanation { get; set; } = "编辑筛选后的 AI 重要资讯；五类内容保持基本覆盖。";
+    public partial string ViewExplanation { get; set; } = "今天值得读的 AI 前沿进展";
+
+    [ObservableProperty]
+    public partial bool IsSelectedLiked { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSelectedDisliked { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSelectedBookmarked { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSelectedLessTopic { get; set; }
+
+    [ObservableProperty]
+    public partial double SelectedRatingValue { get; set; }
 
     public async Task LoadAsync()
     {
+        var selectedId = SelectedItem?.Id;
         var edition = await _newsService.LoadAsync();
         _allItems.Clear();
         _allItems.AddRange(edition.Items);
-        EditionLabel = $"{edition.EditionDate} · 过去 {edition.WindowHours} 小时 · {edition.Items.Count} 条经筛选信息";
+        EditionLabel = $"{edition.EditionDate} · {edition.Items.Count} 条";
         WorkflowProfilePath = _preferenceService.WorkflowProfilePath;
 
         _profile = await _preferenceService.LoadAsync();
@@ -75,6 +93,14 @@ public partial class MainPageViewModel : ObservableObject
         _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
         PreferenceSummary = BuildPreferenceSummary(_profile);
         ApplyFilter();
+        var selectedIndex = selectedId is null
+            ? -1
+            : _filteredItems.FindIndex(item => item.Id == selectedId);
+        if (selectedIndex >= 0)
+        {
+            _batchStart = selectedIndex / BatchSize * BatchSize;
+            RenderBatch(selectedId);
+        }
         CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
         _ = DetectCodexAsync();
     }
@@ -137,12 +163,12 @@ public partial class MainPageViewModel : ObservableObject
         _activeCategory = _trendMode || _recommendationMode ? "全部" : category;
         _savedOnly = savedOnly;
         ViewExplanation = _trendMode
-            ? "三日趋势榜 · 真实讨论指标不足时明确显示“趋势参考”，不伪造转发或评论量。"
+            ? "近三天讨论较多的 AI 话题"
             : _recommendationMode
-                ? "为你推荐 · 编辑质量门槛和类别覆盖不变，偏好只参与重排，并保留探索内容。"
+                ? "根据你的阅读和反馈推荐"
                 : savedOnly
-                    ? "收藏只保存在本机，不会上传阅读历史。"
-                    : "编辑筛选后的 AI 重要资讯；五类内容保持基本覆盖。";
+                    ? "你收藏的资讯"
+                    : "今天值得读的 AI 前沿进展";
         ApplyFilter();
     }
 
@@ -163,9 +189,9 @@ public partial class MainPageViewModel : ObservableObject
             ShowFeedback($"当前栏目共 {_filteredItems.Count} 条，没有下一批");
             return;
         }
-        _batchStart = (_batchStart + BatchSize) % _filteredItems.Count;
+        _batchStart = _batchStart + BatchSize >= _filteredItems.Count ? 0 : _batchStart + BatchSize;
         RenderBatch();
-        ShowFeedback("已换一批；每批固定显示 10 条，不重复凑数");
+        ShowFeedback("已换一批");
     }
 
     public async Task RecordFeedbackAsync(string action, double? score = null)
@@ -183,16 +209,19 @@ public partial class MainPageViewModel : ObservableObject
         {
             var saved = _bookmarkedIds.Contains(SelectedItem.Id);
             ShowFeedback(saved ? "已收藏并保存在本机" : "已取消收藏");
+            UpdateSelectedFeedbackState();
             ApplyFilter();
             return;
         }
+        UpdateSelectedFeedbackState();
         var message = action switch
         {
-            "like" => "已记录喜欢，会适度提高同主题内容排序",
-            "dislike" => "已记录不感兴趣，会适度降低同主题内容排序",
-            "less-topic" => "已记录减少此类，但不会屏蔽重大事件",
-            "rating" => $"已记录 {score:0} 星偏好",
-            _ => "偏好已更新"
+            "like" => IsSelectedLiked ? "已喜欢" : "已取消喜欢",
+            "dislike" => IsSelectedDisliked ? "已标记为不感兴趣" : "已取消不感兴趣",
+            "less-topic" => IsSelectedLessTopic ? "已减少此类内容" : "已取消减少此类内容",
+            "rating" => $"已评分 {score:0} 星",
+            "rating-clear" => "已清除评分",
+            _ => "已保存"
         };
         ShowFeedback(message);
     }
@@ -205,6 +234,10 @@ public partial class MainPageViewModel : ObservableObject
             {
                 _profile = await _preferenceService.RecordAsync(SelectedItem, "source-open");
             }
+            else
+            {
+                ShowFeedback("无法打开原始网站");
+            }
         }
     }
 
@@ -213,7 +246,7 @@ public partial class MainPageViewModel : ObservableObject
         var query = SearchText.Trim();
         var selectedId = SelectedItem?.Id;
         var filtered = _allItems.Where(item =>
-            (_activeCategory == "全部" || item.Category == _activeCategory) &&
+            (_activeCategory == "全部" || MatchesChannel(item, _activeCategory)) &&
             (!_savedOnly || _bookmarkedIds.Contains(item.Id)) &&
             (!_trendMode || !DateTimeOffset.TryParse(item.PublishedAt, out var published) ||
                 published >= DateTimeOffset.Now.AddHours(-72)) &&
@@ -227,11 +260,21 @@ public partial class MainPageViewModel : ObservableObject
         {
             filteredList = filteredList.OrderByDescending(item => item.HotScore).ToList();
         }
-        else if (_recommendationMode)
+        else if (_activeCategory == "全部" && !_savedOnly && query.Length == 0)
         {
-            filteredList = RankForUser(filteredList);
+            // The edition pipeline publishes complete, coverage-checked pages.
+            // Personalization may reorder within a page but must not pull all
+            // papers or open-source entries into page one and weaken page two.
+            filteredList = filteredList
+                .Chunk(BatchSize)
+                .SelectMany(batch => RankForUser(batch.ToList(), _recommendationMode ? 0.30 : 0.20))
+                .ToList();
         }
-        _filteredItems = BalanceForHome(filteredList);
+        else
+        {
+            filteredList = RankForUser(filteredList, _recommendationMode ? 0.30 : 0.20);
+        }
+        _filteredItems = filteredList;
         _batchStart = 0;
         RenderBatch(selectedId);
     }
@@ -239,14 +282,14 @@ public partial class MainPageViewModel : ObservableObject
     private void RenderBatch(string? selectedId = null)
     {
         Items.Clear();
-        var take = Math.Min(BatchSize, _filteredItems.Count);
+        var take = Math.Min(BatchSize, Math.Max(0, _filteredItems.Count - _batchStart));
         for (var index = 0; index < take; index++)
         {
-            Items.Add(_filteredItems[(_batchStart + index) % _filteredItems.Count]);
+            Items.Add(_filteredItems[_batchStart + index]);
         }
-        BatchLabel = _filteredItems.Count > BatchSize
-            ? $"本批 {take} 条 · 共 {_filteredItems.Count} 条"
-            : $"本批 {take} 条";
+        var pageCount = Math.Max(1, (int)Math.Ceiling(_filteredItems.Count / (double)BatchSize));
+        var page = Math.Min(pageCount, _batchStart / BatchSize + 1);
+        BatchLabel = $"第 {page}/{pageCount} 批 · {take} 条";
         SelectedItem = Items.FirstOrDefault(item => item.Id == selectedId) ?? Items.FirstOrDefault();
     }
 
@@ -272,7 +315,7 @@ public partial class MainPageViewModel : ObservableObject
             foreach (var (category, count) in minimums)
             {
                 if (round >= count) continue;
-                var item = remaining.FirstOrDefault(item => item.Category == category);
+                var item = remaining.FirstOrDefault(item => MatchesChannel(item, category));
                 if (item is null) continue;
                 front.Add(item);
                 remaining.Remove(item);
@@ -282,31 +325,107 @@ public partial class MainPageViewModel : ObservableObject
         return front;
     }
 
-    private List<NewsItem> RankForUser(List<NewsItem> items)
+    private List<NewsItem> RankForUser(List<NewsItem> items, double personalWeight)
     {
-        if (_profile.ExplicitFeedbackCount <= 0 || items.Count < 2)
+        if (items.Count < 2)
         {
             return items;
         }
 
-        var personalStrength = Math.Min(0.18, 0.18 * _profile.ExplicitFeedbackCount / 8d);
-        return items.Select((item, index) => new
+        var learnedStrength = personalWeight * Math.Min(1d, _profile.ExplicitFeedbackCount / 8d);
+        const double explorationWeight = 0.10;
+        var importanceWeight = 1d - learnedStrength - explorationWeight;
+        return items.Select(item => new
             {
                 Item = item,
-                Score = (1d - personalStrength) * (1d - index / (double)Math.Max(1, items.Count)) +
-                    personalStrength * PersonalAffinity(item)
+                Score = importanceWeight * EditorialImportance(item) +
+                    learnedStrength * PersonalAffinity(item) +
+                    explorationWeight * ExplorationScore(item)
             })
             .OrderByDescending(entry => entry.Score)
+            .ThenBy(entry => entry.Item.Id, StringComparer.Ordinal)
             .Select(entry => entry.Item)
             .ToList();
     }
 
+    internal static double EditorialImportance(NewsItem item)
+    {
+        var contentTypeWeight = item.ContentType switch
+        {
+            "论文" => 1.00,
+            "模型发布" => 0.95,
+            "开源项目" => 0.90,
+            "Agent产品" => 0.88,
+            "产业事件" => 0.68,
+            _ => 0.60
+        };
+        var freshness = item.FreshnessScore > 0
+            ? NormalizeScore(item.FreshnessScore)
+            : PublishedFreshness(item.PublishedAt);
+        var source = Math.Max(
+            NormalizeScore(item.SourceQualityScore),
+            item.IsPrimarySourceVerified ? 0.85 : 0d);
+
+        return 0.30 * NormalizeScore(item.TechnicalRelevanceScore) +
+            0.25 * NormalizeScore(item.InnovationScore) +
+            0.15 * contentTypeWeight +
+            0.15 * freshness +
+            0.15 * source;
+    }
+
+    private static double NormalizeScore(double value) =>
+        Math.Clamp(value > 1d ? value / 100d : value, 0d, 1d);
+
+    private static double PublishedFreshness(string value)
+    {
+        if (!DateTimeOffset.TryParse(value, out var published))
+        {
+            return 0d;
+        }
+
+        var ageHours = Math.Max(0d, (DateTimeOffset.Now - published).TotalHours);
+        return Math.Clamp(1d - ageHours / (24d * 7d), 0d, 1d);
+    }
+
     private double PersonalAffinity(NewsItem item)
     {
-        var topic = _profile.TopicWeights.TryGetValue(item.Category, out var topicWeight) ? topicWeight : 1d;
+        var keys = item.Topics.Prepend(item.Category).Distinct(StringComparer.OrdinalIgnoreCase);
+        var topic = keys.Select(key => _profile.TopicWeights.TryGetValue(key, out var weight) ? weight : 1d).Max();
         var sourceKey = PreferenceService.NormalizeSource(item);
         var source = _profile.SourceWeights.TryGetValue(sourceKey, out var sourceWeight) ? sourceWeight : 1d;
         return Math.Clamp((topic * 0.72 + source * 0.28) / 2d, 0.1, 1.0);
+    }
+
+    private static double ExplorationScore(NewsItem item)
+    {
+        unchecked
+        {
+            var hash = 17;
+            foreach (var character in $"{DateTime.Today:yyyyMMdd}:{item.Id}") hash = hash * 31 + character;
+            return Math.Abs(hash % 1000) / 999d;
+        }
+    }
+
+    private static bool MatchesChannel(NewsItem item, string channel) =>
+        item.Category.Equals(channel, StringComparison.OrdinalIgnoreCase) ||
+        item.Topics.Any(topic => topic.Equals(channel, StringComparison.OrdinalIgnoreCase));
+
+    private void UpdateSelectedFeedbackState()
+    {
+        if (SelectedItem is null || !_profile.ArticlePreferences.TryGetValue(SelectedItem.Id, out var state))
+        {
+            IsSelectedLiked = false;
+            IsSelectedDisliked = false;
+            IsSelectedBookmarked = false;
+            IsSelectedLessTopic = false;
+            SelectedRatingValue = 0;
+            return;
+        }
+        IsSelectedLiked = state.Reaction == "like";
+        IsSelectedDisliked = state.Reaction == "dislike";
+        IsSelectedBookmarked = state.IsBookmarked;
+        IsSelectedLessTopic = state.Reaction == "less-topic";
+        SelectedRatingValue = state.Rating ?? 0;
     }
 
     private void ShowFeedback(string message)

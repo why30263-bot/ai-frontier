@@ -8,7 +8,7 @@ namespace AIFrontier.Models;
 
 public sealed class NewsEdition
 {
-    public int SchemaVersion { get; set; }
+    public int SchemaVersion { get; set; } = 2;
     public string EditionDate { get; set; } = string.Empty;
     public int WindowHours { get; set; }
     public DateTimeOffset GeneratedAt { get; set; }
@@ -19,6 +19,8 @@ public sealed class NewsItem
 {
     public string Id { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public List<string> Topics { get; set; } = [];
     public string Brand { get; set; } = string.Empty;
     public string BrandColor { get; set; } = "#202020";
     public string LogoAsset { get; set; } = string.Empty;
@@ -69,7 +71,15 @@ public sealed class NewsItem
     public string ReadingMeta => $"{PublishedAt}  ·  {ReadMinutes} 分钟";
 
     [JsonIgnore]
-    public string AccessibleTitle => $"{Category}，{Title}，来源 {SourceName}";
+    public string AccessibleTitle => $"{ContentLabel}，{Title}，来源 {SourceName}";
+
+    [JsonIgnore]
+    public string TopicLabel => Topics.Count == 0 ? Category : string.Join(" · ", Topics.Take(2));
+
+    [JsonIgnore]
+    public string ContentLabel => string.IsNullOrWhiteSpace(ContentType)
+        ? TopicLabel
+        : $"{ContentType} · {TopicLabel}";
 
     [JsonIgnore]
     public string HeatLabel => HasDiscussionMetrics

@@ -16,21 +16,37 @@ public sealed class PreferenceService
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AIFrontier");
 
+    private readonly string _bundledProfilePath;
+    private readonly AtomicJsonStore<PreferenceProfile> _profileStore;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public string WorkflowProfilePath => Path.Combine(_storageRoot, "workflow-profile.json");
 
+    public PreferenceService()
+        : this(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIFrontier"),
+            Path.Combine(AppContext.BaseDirectory, "Data", "preference-profile.json"))
+    {
+    }
+
+    public PreferenceService(string storageRoot, string? bundledProfilePath = null)
+    {
+        _storageRoot = storageRoot;
+        _bundledProfilePath = bundledProfilePath ?? Path.Combine(AppContext.BaseDirectory, "Data", "preference-profile.json");
+        _profileStore = new AtomicJsonStore<PreferenceProfile>(WorkflowProfilePath, JsonOptions);
+    }
+
     public async Task<PreferenceProfile> LoadAsync()
     {
         Directory.CreateDirectory(_storageRoot);
-        var localPath = WorkflowProfilePath;
-        var path = File.Exists(localPath)
-            ? localPath
-            : Path.Combine(AppContext.BaseDirectory, "Data", "preference-profile.json");
+        var profile = await _profileStore.LoadAsync();
+        if (profile is null && File.Exists(_bundledProfilePath))
+        {
+            profile = await new AtomicJsonStore<PreferenceProfile>(_bundledProfilePath, JsonOptions).LoadAsync();
+        }
 
-        await using var stream = File.OpenRead(path);
-        return await JsonSerializer.DeserializeAsync<PreferenceProfile>(stream, JsonOptions)
-            ?? new PreferenceProfile();
+        return NormalizeProfile(profile ?? new PreferenceProfile());
     }
 
     public async Task<PreferenceProfile> RecordAsync(NewsItem item, string action, double? score = null)
@@ -54,7 +70,10 @@ public sealed class PreferenceService
             var topicDelta = after.Topic - before.Topic;
             var sourceDelta = after.Source - before.Source;
 
-            Adjust(profile.TopicWeights, item.Category, topicDelta);
+            foreach (var topic in item.Topics.Prepend(item.Category).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                Adjust(profile.TopicWeights, topic, topicDelta);
+            }
             Adjust(profile.SourceWeights, NormalizeSource(item), sourceDelta);
             profile.BookmarkedIds = profile.ArticlePreferences
                 .Where(pair => pair.Value.IsBookmarked)
@@ -66,17 +85,23 @@ public sealed class PreferenceService
             profile.UpdatedAt = DateTimeOffset.Now;
             profile.PromptHint = BuildPromptHint(profile);
 
-            var feedback = new FeedbackEvent(item.Id, action, score, item.Category, item.SourceName, DateTimeOffset.Now);
-            var eventLine = JsonSerializer.Serialize(feedback, JsonOptions) + Environment.NewLine;
-            await File.AppendAllTextAsync(
-                Path.Combine(_storageRoot, "feedback-events.jsonl"),
-                eventLine,
-                new UTF8Encoding(false));
+            // The profile is the source of truth. Atomic replacement ensures a crash
+            // cannot leave a half-written JSON document behind.
+            _ = await _profileStore.SaveAsync(profile);
 
-            await File.WriteAllTextAsync(
-                WorkflowProfilePath,
-                JsonSerializer.Serialize(profile, JsonOptions),
-                new UTF8Encoding(false));
+            try
+            {
+                var feedback = new FeedbackEvent(item.Id, action, score, item.Category, item.SourceName, DateTimeOffset.Now);
+                var eventLine = JsonSerializer.Serialize(feedback, JsonOptions) + Environment.NewLine;
+                await File.AppendAllTextAsync(
+                    Path.Combine(_storageRoot, "feedback-events.jsonl"),
+                    eventLine,
+                    new UTF8Encoding(false));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Analytics must never prevent the preference itself from being usable.
+            }
 
             return profile;
         }
@@ -84,6 +109,17 @@ public sealed class PreferenceService
         {
             _gate.Release();
         }
+    }
+
+    private static PreferenceProfile NormalizeProfile(PreferenceProfile profile)
+    {
+        profile.TopicWeights ??= [];
+        profile.SourceWeights ??= [];
+        profile.BlockedSources ??= [];
+        profile.BlockedTopics ??= [];
+        profile.ArticlePreferences ??= [];
+        profile.BookmarkedIds ??= [];
+        return profile;
     }
 
     private static void Adjust(Dictionary<string, double> values, string key, double delta)
@@ -139,6 +175,9 @@ public sealed class PreferenceService
             case "less-topic": state.Reaction = state.Reaction == "less-topic" ? string.Empty : "less-topic"; break;
             case "rating" when score is not null:
                 state.Rating = Math.Clamp(score.Value, 1, 5);
+                break;
+            case "rating-clear":
+                state.Rating = null;
                 break;
         }
     }

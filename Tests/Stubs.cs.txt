@@ -1,0 +1,106 @@
+namespace AIFrontier.Models
+{
+public sealed class NewsEdition
+{
+    public string EditionDate { get; set; } = string.Empty;
+    public List<NewsItem> Items { get; set; } = [];
+}
+
+public sealed class NewsItem
+{
+    public string Id { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public List<string> Topics { get; set; } = [];
+    public string Title { get; set; } = string.Empty;
+    public string Summary { get; set; } = string.Empty;
+    public List<string> Tags { get; set; } = [];
+    public string PublishedAt { get; set; } = string.Empty;
+    public string SourceName { get; set; } = string.Empty;
+    public string SourceUrl { get; set; } = string.Empty;
+    public double HotScore { get; set; }
+    public double SourceQualityScore { get; set; }
+    public double InnovationScore { get; set; }
+    public double TechnicalRelevanceScore { get; set; }
+    public double FreshnessScore { get; set; }
+    public bool IsPrimarySourceVerified { get; set; }
+}
+
+public sealed class PreferenceProfile
+{
+    public int SchemaVersion { get; set; } = 1;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+    public Dictionary<string, double> TopicWeights { get; set; } = [];
+    public Dictionary<string, double> SourceWeights { get; set; } = [];
+    public string Depth { get; set; } = "入门解释";
+    public string PromptHint { get; set; } = string.Empty;
+    public List<string> BlockedSources { get; set; } = [];
+    public List<string> BlockedTopics { get; set; } = [];
+    public Dictionary<string, ArticlePreference> ArticlePreferences { get; set; } = [];
+    public List<string> BookmarkedIds { get; set; } = [];
+    public int ExplicitFeedbackCount { get; set; }
+}
+
+public sealed class ArticlePreference
+{
+    public bool DetailOpened { get; set; }
+    public bool SourceOpened { get; set; }
+    public bool CodexOpened { get; set; }
+    public bool IsBookmarked { get; set; }
+    public string Reaction { get; set; } = string.Empty;
+    public double? Rating { get; set; }
+}
+
+public sealed record FeedbackEvent(
+    string NewsId,
+    string Action,
+    double? Score,
+    string Category,
+    string Source,
+    DateTimeOffset CreatedAt);
+}
+
+namespace AIFrontier.Services
+{
+using AIFrontier.Models;
+public sealed class NewsService
+{
+    public Task<NewsEdition> LoadAsync() => Task.FromResult(new NewsEdition());
+}
+
+public enum UpdateChoice { InstallNow, EnableAutoUpdate, SkipVersion, NeverPrompt }
+
+public sealed class UpdateCheckResult
+{
+    public string Status { get; set; } = string.Empty;
+}
+
+public sealed class UpdateService
+{
+    public Task<UpdateCheckResult> CheckAsync() => Task.FromResult(new UpdateCheckResult());
+    public Task<string> ApplyChoiceAsync(UpdateCheckResult update, UpdateChoice choice) => Task.FromResult(string.Empty);
+    public Task<string> ResetPromptPreferencesAsync() => Task.FromResult(string.Empty);
+}
+
+public sealed class CodexResult
+{
+    public string Status { get; set; } = string.Empty;
+    public bool IsConnected { get; set; }
+}
+
+public sealed class CodexIntegrationService
+{
+    public string WorkspacePath => string.Empty;
+    public Task<CodexResult> GetStatusAsync() => Task.FromResult(new CodexResult());
+    public Task<CodexResult> ConnectAsync() => Task.FromResult(new CodexResult());
+    public Task<CodexResult> AnalyzeAsync(NewsItem item) => Task.FromResult(new CodexResult());
+}
+}
+
+namespace Windows.System
+{
+public static class Launcher
+{
+    public static Task<bool> LaunchUriAsync(Uri uri) => Task.FromResult(true);
+}
+}

@@ -104,10 +104,14 @@ public sealed partial class BuiltInCollectorService
                     : "未标注";
                 var pushedAt = repository.GetProperty("pushed_at").GetString() ?? DateTimeOffset.UtcNow.ToString("O");
                 var summary = $"{description}（★ {stars:N0}，主要语言：{language}）";
+                var category = InferCategory(discovery.Category, title, description);
+                const string contentType = "开源项目";
                 output.Add(new NewsItem
                 {
                     Id = Slug(link),
-                    Category = InferCategory(discovery.Category, title, description),
+                    Category = category,
+                    ContentType = contentType,
+                    Topics = InferTopics(category, title, description, contentType),
                     Brand = "GitHub",
                     BrandColor = "#24292F",
                     LogoAsset = "Assets/Brands/github.svg",
@@ -127,7 +131,7 @@ public sealed partial class BuiltInCollectorService
                     WhatToWatch = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。",
                     Details = [$"GitHub 当前显示约 {stars:N0} 个 Star，主要语言为 {language}。", description],
                     SourceTrail = [$"GitHub repository API: {link}"],
-                    Tags = [discovery.Category, "GitHub", "近期活跃", "补充发现", "自动采集"]
+                    Tags = [discovery.Category, "GitHub", "近期活跃", "候选素材", "不可直接展示"]
                 });
             }
             return output.Take(discovery.MaxItems).ToList();
@@ -194,10 +198,13 @@ public sealed partial class BuiltInCollectorService
         }
 
         var category = InferCategory(source.Category, title, description);
+        var contentType = InferContentType(source, title, description);
         return new NewsItem
         {
             Id = Slug(link),
             Category = category,
+            ContentType = contentType,
+            Topics = InferTopics(category, title, description, contentType),
             Brand = source.Brand,
             BrandColor = source.BrandColor,
             LogoAsset = source.LogoAsset,
@@ -217,7 +224,7 @@ public sealed partial class BuiltInCollectorService
             WhatToWatch = "继续观察官方文档、代码仓库、评测结果和真实用户反馈是否出现可验证更新。",
             Details = [summary, "本条为内置采集器的保底结果；连接 GitHub 编辑源或 Codex 后可获得更完整的中文分析。"],
             SourceTrail = [$"{source.Name}: {link}"],
-            Tags = [category, source.Brand, "自动采集"]
+            Tags = [category, source.Brand, "候选素材", "不可直接展示"]
         };
     }
 
@@ -236,7 +243,7 @@ public sealed partial class BuiltInCollectorService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (category, minimum) in configuration.CategoryMinimums)
         {
-            foreach (var item in pool.Where(item => item.Category == category).Take(minimum))
+            foreach (var item in pool.Where(item => MatchesCategory(item, category)).Take(minimum))
             {
                 if (seen.Add(item.SourceUrl)) result.Add(item);
             }
@@ -257,6 +264,71 @@ public sealed partial class BuiltInCollectorService
         var modelTerms = new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型" };
         return modelTerms.Any(text.Contains) ? "大模型" : fallback;
     }
+
+    private static string InferContentType(FeedSource source, string title, string description)
+    {
+        var text = $"{source.Name} {source.Url} {title} {description}".ToLowerInvariant();
+        if (source.Trust.Contains("论文", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("arxiv.org") || text.Contains("aclanthology.org"))
+        {
+            return "论文";
+        }
+        if (text.Contains("github.com") || source.Category == "开源项目" &&
+            (text.Contains("open source") || text.Contains("开源")))
+        {
+            return "开源项目";
+        }
+        if (source.Category == "大模型" ||
+            new[] { "model release", "introducing", "发布", "模型更新", "checkpoint", "weights" }.Any(text.Contains))
+        {
+            return "模型与产品";
+        }
+        if (source.Category == "产业动态")
+        {
+            return "行业新闻";
+        }
+        return "技术进展";
+    }
+
+    private static List<string> InferTopics(
+        string fallback,
+        string title,
+        string description,
+        string contentType)
+    {
+        var text = $"{title} {description}".ToLowerInvariant();
+        var topics = new List<string>();
+        void Add(string topic)
+        {
+            if (!topics.Contains(topic, StringComparer.OrdinalIgnoreCase))
+            {
+                topics.Add(topic);
+            }
+        }
+
+        Add(fallback);
+        if (new[] { "agent", "agentic", "multi-agent", "tool use", "computer use", "智能体", "代理系统" }.Any(text.Contains))
+        {
+            Add("Agent");
+        }
+        if (new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型" }.Any(text.Contains))
+        {
+            Add("大模型");
+        }
+        if (contentType == "论文")
+        {
+            Add("重要研究");
+        }
+        if (contentType == "开源项目")
+        {
+            Add("开源项目");
+        }
+        return topics;
+    }
+
+    private static bool MatchesCategory(NewsItem item, string category) =>
+        string.Equals(item.Category, category, StringComparison.OrdinalIgnoreCase) ||
+        item.Topics?.Any(topic => string.Equals(topic, category, StringComparison.OrdinalIgnoreCase)) == true;
 
     private static string Value(XElement parent, string localName) =>
         parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName)?.Value?.Trim() ?? string.Empty;

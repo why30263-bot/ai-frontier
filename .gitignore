@@ -56,3 +56,5 @@ __pycache__/
 # Generated files
 Generated\ Files/
 *_wpftmp.csproj
+Data/*.draft.json
+Data/*.draft.json.tmp

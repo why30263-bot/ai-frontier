@@ -1,17 +1,31 @@
 {
-  "schemaVersion": 1,
-  "targetItems": { "minimum": 20, "preferred": 30, "maximum": 30, "batchSize": 10 },
-  "categories": ["大模型", "Agent", "开源项目", "重要研究", "产业动态", "人物观点"],
-  "requiredDetailFields": ["briefSections", "fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "sourceTrail"],
+  "schemaVersion": 2,
+  "targetItems": { "minimum": 20, "preferred": 30, "maximum": 40, "batchSize": 10 },
+  "contentTypes": ["论文", "开源项目", "模型发布", "Agent产品", "产业事件"],
+  "topics": ["大模型", "Agent", "重要研究", "开源项目", "产业动态"],
+  "requiredDetailFields": [
+    "contentType", "topics", "briefSections", "fullBrief", "keyFacts",
+    "technicalRelevanceScore", "innovationScore", "sourceTrail", "eventKey"
+  ],
+  "publicationGates": {
+    "chineseOnly": true,
+    "sectionCount": { "minimum": 3, "maximum": 5 },
+    "minimumChineseBodyCharacters": 275,
+    "technicalRelevanceScore": 0.55,
+    "innovationScore": 0.35,
+    "independentReviewRequired": true,
+    "failClosed": true
+  },
   "rules": [
-    "标题只描述已确认事件，不使用震惊、颠覆、淘汰等夸张词。",
-    "标题和摘要必须结论先行，第一时间回答它做到了什么、核心贡献是什么，不把日期、来源或背景套话放在贡献之前。",
-    "首批10条必须覆盖大模型、Agent、开源项目、重要研究和产业动态，每类目标2条。",
-    "近72小时某类不足时，把该类时间窗放宽到14天并标记补充阅读，再启用可核查的专项项目发现。",
-    "同一事件只保留一条主卡片，其他来源进入 sourceTrail。",
-    "社交平台只用于发现线索，正式条目必须回到原始来源核查。",
-    "三日热榜不读取个人偏好；缺少真实跨平台讨论快照时只在后台使用可用信号，不在阅读界面展示方法声明。",
-    "偏好只在为你推荐中影响普通内容排序，不得改变事实核查标准和五类基本覆盖。",
-    "没有足够高质量事件时可以少于最低条数，不得用重复信息凑数。"
+    "contentType描述材料形态，topics描述主题；论文讨论Agent时仍是论文，Agent只是主题。",
+    "标题、摘要和首段结论先行，第一时间回答做到了什么、贡献或关键变化是什么。",
+    "正文按材料动态组织3到5段，不固定五段，不为凑结构重复信息。",
+    "完整英文句子不得进入标题、摘要、正文或关键事实，模型名与必要术语可以保留英文。",
+    "读者界面不得出现筛选逻辑、置信度、来源声明、核查提醒、报道边界或其他编辑流程话语。",
+    "娱乐、人物花边、纯营销、纯融资和普通代码推送在撰稿前淘汰。",
+    "GitHub条目只采用正式Release或有实质发行说明的重大版本，不把近期push当新闻。",
+    "同一事件只保留一条主卡片，DOI、arXiv、仓库版本和近似标题用于事件级去重。",
+    "撰稿与审稿分为两个独立AI阶段；审稿失败、字段缺失或门槛不足时整条不发布。",
+    "任一期不足20条、不是10的整倍数，或任一批缺少大模型、Agent、论文、开源项目时，原子保留上一期合格中文版。"
   ]
 }
