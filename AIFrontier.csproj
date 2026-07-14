@@ -76,4 +76,19 @@
     <PublishReadyToRun>False</PublishReadyToRun>
     <PublishTrimmed>False</PublishTrimmed>
   </PropertyGroup>
+
+  <Target Name="CopyWinUIRuntimeArtifactsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUIRuntimeArtifact Include="$(TargetDir)*.xbf;$(TargetDir)*.pri" />
+      <_WinUIAsset Include="$(TargetDir)Assets\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_WinUIRuntimeArtifact)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="@(_WinUIAsset)"
+      DestinationFiles="@(_WinUIAsset->'$(PublishDir)Assets\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
 </Project>
