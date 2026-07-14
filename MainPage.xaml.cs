@@ -1,4 +1,5 @@
 using AIFrontier.Models;
+using AIFrontier.Services;
 using AIFrontier.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,6 +11,7 @@ public sealed partial class MainPage : Page
     private bool _isCompact;
     private bool _compactDetailVisible;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMinutes(10) };
+    private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
 
     public MainPageViewModel ViewModel { get; } = new();
 
@@ -20,6 +22,7 @@ public sealed partial class MainPage : Page
         ViewModel.Items.CollectionChanged += (_, _) =>
             EmptyState.Visibility = ViewModel.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         _refreshTimer.Tick += async (_, _) => await RefreshNewsAsync(false);
+        _updateTimer.Tick += async (_, _) => await CheckForUpdatesAndPromptAsync(false);
     }
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -30,11 +33,19 @@ public sealed partial class MainPage : Page
             NewsList.SelectedItem = ViewModel.SelectedItem;
             UpdateResponsiveLayout(ActualWidth);
             _refreshTimer.Start();
+            _updateTimer.Start();
+            _ = CheckForUpdatesAndPromptAsync(false);
         }
         catch (Exception ex)
         {
             ViewModel.FeedbackMessage = $"读取新闻失败：{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
+            ViewModel.EditionLabel = ViewModel.FeedbackMessage;
+            var logRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AIFrontier");
+            Directory.CreateDirectory(logRoot);
+            await File.WriteAllTextAsync(Path.Combine(logRoot, "startup-error.log"), ex.ToString());
         }
     }
 
@@ -99,7 +110,21 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        ShowDetail(item);
+    }
+
+    private void CardDetailButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: NewsItem item })
+        {
+            ShowDetail(item);
+        }
+    }
+
+    private void ShowDetail(NewsItem item)
+    {
         ViewModel.Select(item);
+        NewsList.SelectedItem = item;
         PreferenceRating.Value = 0;
         if (_isCompact)
         {
@@ -153,4 +178,105 @@ public sealed partial class MainPage : Page
 
     private async void OpenSourceButton_Click(object sender, RoutedEventArgs e) =>
         await ViewModel.OpenSourceAsync();
+
+    private async void ConnectCodexButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ViewModel.ConnectCodexAsync();
+        }
+        catch (Exception exception)
+        {
+            ViewModel.FeedbackMessage = $"接入 Codex 失败：{exception.Message}";
+            ViewModel.IsFeedbackMessageOpen = true;
+        }
+    }
+
+    private async void AnalyzeWithCodexButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ViewModel.AnalyzeWithCodexAsync();
+        }
+        catch (Exception exception)
+        {
+            ViewModel.FeedbackMessage = $"打开 Codex 分析失败：{exception.Message}";
+            ViewModel.IsFeedbackMessageOpen = true;
+        }
+    }
+
+    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) =>
+        await CheckForUpdatesAndPromptAsync(true);
+
+    private async void ResetUpdatePromptsButton_Click(object sender, RoutedEventArgs e) =>
+        await ViewModel.ResetUpdatePromptsAsync();
+
+    private async Task CheckForUpdatesAndPromptAsync(bool forcePrompt)
+    {
+        var update = await ViewModel.CheckForUpdatesAsync();
+        if (!update.IsAvailable)
+        {
+            if (forcePrompt)
+            {
+                ViewModel.FeedbackMessage = update.Status;
+                ViewModel.IsFeedbackMessageOpen = true;
+            }
+            return;
+        }
+
+        if (update.AutoUpdateEnabled)
+        {
+            await ViewModel.ApplyUpdateChoiceAsync(update, UpdateChoice.EnableAutoUpdate);
+            return;
+        }
+
+        if (!update.ShouldPrompt && !forcePrompt)
+        {
+            return;
+        }
+
+        var choices = new ComboBox
+        {
+            Header = "这次怎么处理？",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            SelectedIndex = 0,
+            ItemsSource = new[]
+            {
+                "立即更新（只更新这一次）",
+                "接受并开启自动更新",
+                $"本版本不需要（跳过 {update.LatestVersion}）",
+                "不要再提示更新"
+            }
+        };
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"当前版本：{update.CurrentVersion}\n最新版本：{update.LatestVersion}\n更新来自项目固定 GitHub Releases，并在安装前校验 SHA-256。",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(choices);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "发现 AI Frontier 新版本",
+            Content = content,
+            PrimaryButtonText = "确认",
+            CloseButtonText = "稍后",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var choice = choices.SelectedIndex switch
+        {
+            1 => UpdateChoice.EnableAutoUpdate,
+            2 => UpdateChoice.SkipVersion,
+            3 => UpdateChoice.NeverPrompt,
+            _ => UpdateChoice.InstallNow
+        };
+        await ViewModel.ApplyUpdateChoiceAsync(update, choice);
+    }
 }
