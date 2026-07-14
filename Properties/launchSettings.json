@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AIFrontier (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AIFrontier (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

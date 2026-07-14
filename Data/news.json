@@ -1,0 +1,650 @@
+{
+  "schemaVersion": 1,
+  "editionDate": "2026-07-14",
+  "windowHours": 72,
+  "generatedAt": "2026-07-14T15:12:10+08:00",
+  "items": [
+    {
+      "id": "feed-5c42ae360fa63232",
+      "category": "重要研究",
+      "brand": "arXiv",
+      "brandColor": "#B31B1B",
+      "logoAsset": "Assets/Brands/arxiv.svg",
+      "title": "Metacognition in LLMs: Foundations, Progress, and Opportunities",
+      "summary": "Metacognition is a foundational component of intelligence critical to effective learning, problem solving, decision-making, communication, and more. In recent years, it has become increasingly recognized as a cornerstone of capable, transparent AI systems. Yet…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "arXiv AI",
+      "sourceUrl": "https://arxiv.org/abs/2607.11881v1",
+      "readMinutes": 5,
+      "confidence": "论文原文",
+      "whyItMatters": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "details": [
+        "Metacognition is a foundational component of intelligence critical to effective learning, problem solving, decision-making, communication, and more. In recent years, it has become increasingly recognized as a cornerstone of capable, transparent AI systems. Yet…"
+      ],
+      "tags": [
+        "重要研究",
+        "arXiv",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "arXiv AI: https://arxiv.org/abs/2607.11881v1"
+      ],
+      "keyFacts": [
+        "原始信息来自 arXiv AI。",
+        "Metacognition is a foundational component of intelligence critical to effective learning, problem solving, decision-making, communication, and more. In recent years, it has become increasingly recognized as a cornerstone of capable, transparent AI systems. Yet…"
+      ],
+      "context": "前沿论文常先给出受控实验结果，能否推广到真实场景仍需要复现、对照实验和后续工作验证。",
+      "beginnerExplainer": "论文描述的是方法和实验结论，不等于技术已经成为成熟产品。",
+      "impact": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-5ff9e4858ff1b61a",
+      "category": "产业动态",
+      "brand": "TechCrunch",
+      "brandColor": "#0A9E01",
+      "logoAsset": "",
+      "title": "Already rich, already successful, why the last wave of tech winners is grinding again",
+      "summary": "They're rolling up their sleeves again, seemingly out of fear of missing AI's defining moment and, presumably, the irresistible allure of making even more money -- potentially a lot more.",
+      "publishedAt": "2026-07-14",
+      "sourceName": "TechCrunch AI",
+      "sourceUrl": "https://techcrunch.com/2026/07/13/already-rich-already-successful-why-the-last-wave-of-tech-winners-is-grinding-again/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "They're rolling up their sleeves again, seemingly out of fear of missing AI's defining moment and, presumably, the irresistible allure of making even more money -- potentially a lot more."
+      ],
+      "tags": [
+        "产业动态",
+        "TechCrunch",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "TechCrunch AI: https://techcrunch.com/2026/07/13/already-rich-already-successful-why-the-last-wave-of-tech-winners-is-grinding-again/"
+      ],
+      "keyFacts": [
+        "原始信息来自 TechCrunch AI。",
+        "They're rolling up their sleeves again, seemingly out of fear of missing AI's defining moment and, presumably, the irresistible allure of making even more money -- potentially a lot more."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-fdf0a55e24475c84",
+      "category": "产业动态",
+      "brand": "The Verge",
+      "brandColor": "#E3007F",
+      "logoAsset": "",
+      "title": "Siri AI is already changing how I use my iPhone",
+      "summary": "iOS 27 escaped the developer world today with the launch of the first public beta. I've been testing the new operating system since early June, looking for quirks and seeing if it can live up to the hype Apple promised in the keynote. This year's iOS upgrades…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "The Verge AI",
+      "sourceUrl": "https://www.theverge.com/tech/964714/siri-ai-public-beta-preview-ios-27-hands-on",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "iOS 27 escaped the developer world today with the launch of the first public beta. I've been testing the new operating system since early June, looking for quirks and seeing if it can live up to the hype Apple promised in the keynote. This year's iOS upgrades…"
+      ],
+      "tags": [
+        "产业动态",
+        "The Verge",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "The Verge AI: https://www.theverge.com/tech/964714/siri-ai-public-beta-preview-ios-27-hands-on"
+      ],
+      "keyFacts": [
+        "原始信息来自 The Verge AI。",
+        "iOS 27 escaped the developer world today with the launch of the first public beta. I've been testing the new operating system since early June, looking for quirks and seeing if it can live up to the hype Apple promised in the keynote. This year's iOS upgrades…"
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-9c9ada98d7f2067c",
+      "category": "产业动态",
+      "brand": "WIRED",
+      "brandColor": "#111111",
+      "logoAsset": "",
+      "title": "Siri AI Is Becoming Apple’s Everything Tool",
+      "summary": "Apple’s revamped Siri is more than a voice assistant; it’s now the backbone of the iPhone user experience. You can try it now through the iOS 27 public beta.",
+      "publishedAt": "2026-07-14",
+      "sourceName": "WIRED AI",
+      "sourceUrl": "https://www.wired.com/story/siri-ai-is-now-apple-everything-tool/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Apple’s revamped Siri is more than a voice assistant; it’s now the backbone of the iPhone user experience. You can try it now through the iOS 27 public beta."
+      ],
+      "tags": [
+        "产业动态",
+        "WIRED",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "WIRED AI: https://www.wired.com/story/siri-ai-is-now-apple-everything-tool/"
+      ],
+      "keyFacts": [
+        "原始信息来自 WIRED AI。",
+        "Apple’s revamped Siri is more than a voice assistant; it’s now the backbone of the iPhone user experience. You can try it now through the iOS 27 public beta."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "github-7fc08de27bce1b0c",
+      "category": "开源项目",
+      "brand": "GitHub",
+      "brandColor": "#24292F",
+      "logoAsset": "Assets/Brands/github.svg",
+      "title": "Significant-Gravitas/AutoGPT",
+      "summary": "AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters.（★ 185,519，主要语言：Python）",
+      "publishedAt": "2026-07-14",
+      "sourceName": "GitHub 项目发现",
+      "sourceUrl": "https://github.com/Significant-Gravitas/AutoGPT",
+      "readMinutes": 4,
+      "confidence": "项目仓库",
+      "whyItMatters": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "details": [
+        "GitHub 当前显示约 185,519 个 Star，主要语言为 Python。",
+        "仓库许可证标识：NOASSERTION；最近推送时间：2026-07-14T06:31:25Z。",
+        "AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters."
+      ],
+      "tags": [
+        "开源项目",
+        "GitHub",
+        "近期活跃",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "GitHub repository API: https://github.com/Significant-Gravitas/AutoGPT"
+      ],
+      "keyFacts": [
+        "GitHub 当前显示约 185,519 个 Star，主要语言为 Python。",
+        "仓库许可证标识：NOASSERTION；最近推送时间：2026-07-14T06:31:25Z。",
+        "AutoGPT is the vision of accessible AI for everyone, to use and to build on. Our mission is to provide the tools, so that you can focus on what matters."
+      ],
+      "context": "开源 AI 生态更新很快，代码可见不代表容易复现；许可证、维护状态和部署成本同样重要。",
+      "beginnerExplainer": "开源项目允许公开检查和二次开发，但仍要核对许可证、维护频率和真实部署。",
+      "impact": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "limitations": "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。",
+      "whatToWatch": "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
+    },
+    {
+      "id": "feed-61402a78e8313e54",
+      "category": "重要研究",
+      "brand": "arXiv",
+      "brandColor": "#B31B1B",
+      "logoAsset": "Assets/Brands/arxiv.svg",
+      "title": "Invariant Learning Dynamics of Transformers in Inductive Reasoning Tasks",
+      "summary": "We present a theoretical framework to explain the emergence of inductive reasoning abilities in Transformer language models. While previous works on Transformer learning dynamics have so far been mostly tied to specific tasks, we study a generalized class of i…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "arXiv AI",
+      "sourceUrl": "https://arxiv.org/abs/2607.11875v1",
+      "readMinutes": 5,
+      "confidence": "论文原文",
+      "whyItMatters": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "details": [
+        "We present a theoretical framework to explain the emergence of inductive reasoning abilities in Transformer language models. While previous works on Transformer learning dynamics have so far been mostly tied to specific tasks, we study a generalized class of i…"
+      ],
+      "tags": [
+        "重要研究",
+        "arXiv",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "arXiv AI: https://arxiv.org/abs/2607.11875v1"
+      ],
+      "keyFacts": [
+        "原始信息来自 arXiv AI。",
+        "We present a theoretical framework to explain the emergence of inductive reasoning abilities in Transformer language models. While previous works on Transformer learning dynamics have so far been mostly tied to specific tasks, we study a generalized class of i…"
+      ],
+      "context": "前沿论文常先给出受控实验结果，能否推广到真实场景仍需要复现、对照实验和后续工作验证。",
+      "beginnerExplainer": "论文描述的是方法和实验结论，不等于技术已经成为成熟产品。",
+      "impact": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-4bf0e96e2a8dc9a7",
+      "category": "产业动态",
+      "brand": "TechCrunch",
+      "brandColor": "#0A9E01",
+      "logoAsset": "",
+      "title": "Uber’s product chief on hotels, robotaxis, and why the company doesn’t want to be “everything for everyone”",
+      "summary": "Uber Chief Product Officer Sachin Kansal walks TechCrunch through the company's financial-services ambitions, its increasingly complicated relationship with Waymo, its new AV Labs data operation, and how AI is starting to show up in ways riders and drivers wil…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "TechCrunch AI",
+      "sourceUrl": "https://techcrunch.com/2026/07/13/ubers-product-chief-on-hotels-robotaxis-and-why-the-company-doesnt-want-to-be-everything-for-everyone/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Uber Chief Product Officer Sachin Kansal walks TechCrunch through the company's financial-services ambitions, its increasingly complicated relationship with Waymo, its new AV Labs data operation, and how AI is starting to show up in ways riders and drivers wil…"
+      ],
+      "tags": [
+        "产业动态",
+        "TechCrunch",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "TechCrunch AI: https://techcrunch.com/2026/07/13/ubers-product-chief-on-hotels-robotaxis-and-why-the-company-doesnt-want-to-be-everything-for-everyone/"
+      ],
+      "keyFacts": [
+        "原始信息来自 TechCrunch AI。",
+        "Uber Chief Product Officer Sachin Kansal walks TechCrunch through the company's financial-services ambitions, its increasingly complicated relationship with Waymo, its new AV Labs data operation, and how AI is starting to show up in ways riders and drivers wil…"
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-8e99f406a484eff4",
+      "category": "产业动态",
+      "brand": "The Verge",
+      "brandColor": "#E3007F",
+      "logoAsset": "",
+      "title": "The 6 wildest claims in Apple’s lawsuit against OpenAI",
+      "summary": "When Apple employees interviewed for jobs at OpenAI, the AI startup's hardware head allegedly asked them to show up with something unusual: components they were working on and unreleased product samples. That's according to a blockbuster lawsuit filed by Apple…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "The Verge AI",
+      "sourceUrl": "https://www.theverge.com/tech/964843/apple-openai-lawsuit-wildest-claims",
+      "readMinutes": 3,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "When Apple employees interviewed for jobs at OpenAI, the AI startup's hardware head allegedly asked them to show up with something unusual: components they were working on and unreleased product samples. That's according to a blockbuster lawsuit filed by Apple…"
+      ],
+      "tags": [
+        "产业动态",
+        "The Verge",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "The Verge AI: https://www.theverge.com/tech/964843/apple-openai-lawsuit-wildest-claims"
+      ],
+      "keyFacts": [
+        "原始信息来自 The Verge AI。",
+        "When Apple employees interviewed for jobs at OpenAI, the AI startup's hardware head allegedly asked them to show up with something unusual: components they were working on and unreleased product samples. That's according to a blockbuster lawsuit filed by Apple…"
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "github-1643157b768c76e7",
+      "category": "开源项目",
+      "brand": "GitHub",
+      "brandColor": "#24292F",
+      "logoAsset": "Assets/Brands/github.svg",
+      "title": "f/prompts.chat",
+      "summary": "f.k.a. Awesome ChatGPT Prompts. Share, discover, and collect prompts from the community. Free and open source — self-host for your organization with complete privacy.（★ 165,671，主要语言：HTML）",
+      "publishedAt": "2026-07-14",
+      "sourceName": "GitHub 项目发现",
+      "sourceUrl": "https://github.com/f/prompts.chat",
+      "readMinutes": 4,
+      "confidence": "项目仓库",
+      "whyItMatters": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "details": [
+        "GitHub 当前显示约 165,671 个 Star，主要语言为 HTML。",
+        "仓库许可证标识：NOASSERTION；最近推送时间：2026-07-14T04:03:17Z。",
+        "f.k.a. Awesome ChatGPT Prompts. Share, discover, and collect prompts from the community. Free and open source — self-host for your organization with complete privacy."
+      ],
+      "tags": [
+        "开源项目",
+        "GitHub",
+        "近期活跃",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "GitHub repository API: https://github.com/f/prompts.chat"
+      ],
+      "keyFacts": [
+        "GitHub 当前显示约 165,671 个 Star，主要语言为 HTML。",
+        "仓库许可证标识：NOASSERTION；最近推送时间：2026-07-14T04:03:17Z。",
+        "f.k.a. Awesome ChatGPT Prompts. Share, discover, and collect prompts from the community. Free and open source — self-host for your organization with complete privacy."
+      ],
+      "context": "开源 AI 生态更新很快，代码可见不代表容易复现；许可证、维护状态和部署成本同样重要。",
+      "beginnerExplainer": "开源项目允许公开检查和二次开发，但仍要核对许可证、维护频率和真实部署。",
+      "impact": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "limitations": "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。",
+      "whatToWatch": "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
+    },
+    {
+      "id": "feed-9235b4a32b9cc0f2",
+      "category": "重要研究",
+      "brand": "arXiv",
+      "brandColor": "#B31B1B",
+      "logoAsset": "Assets/Brands/arxiv.svg",
+      "title": "A Minimalist Retargeting-Guided Reinforcement Learning Recipe for Dexterous Manipulation",
+      "summary": "Recent work in humanoid whole-body control has found success with a simple recipe: retarget human motion to robot kinematic references, then train policies via reinforcement learning (RL) to track them. But how does this recipe transfer to dexterous manipulati…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "arXiv AI",
+      "sourceUrl": "https://arxiv.org/abs/2607.11874v1",
+      "readMinutes": 5,
+      "confidence": "论文原文",
+      "whyItMatters": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "details": [
+        "Recent work in humanoid whole-body control has found success with a simple recipe: retarget human motion to robot kinematic references, then train policies via reinforcement learning (RL) to track them. But how does this recipe transfer to dexterous manipulati…"
+      ],
+      "tags": [
+        "重要研究",
+        "arXiv",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "arXiv AI: https://arxiv.org/abs/2607.11874v1"
+      ],
+      "keyFacts": [
+        "原始信息来自 arXiv AI。",
+        "Recent work in humanoid whole-body control has found success with a simple recipe: retarget human motion to robot kinematic references, then train policies via reinforcement learning (RL) to track them. But how does this recipe transfer to dexterous manipulati…"
+      ],
+      "context": "前沿论文常先给出受控实验结果，能否推广到真实场景仍需要复现、对照实验和后续工作验证。",
+      "beginnerExplainer": "论文描述的是方法和实验结论，不等于技术已经成为成熟产品。",
+      "impact": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-4efd27519b8173ae",
+      "category": "产业动态",
+      "brand": "TechCrunch",
+      "brandColor": "#0A9E01",
+      "logoAsset": "",
+      "title": "Video-generation startup PixVerse raises $439M, valuation soars past $2B",
+      "summary": "With the cash, the company aims to expand its world model offering and reach customers across geographies.",
+      "publishedAt": "2026-07-14",
+      "sourceName": "TechCrunch AI",
+      "sourceUrl": "https://techcrunch.com/2026/07/13/video-generation-startup-pixverse-raises-439m-valuation-soars-past-2b/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "With the cash, the company aims to expand its world model offering and reach customers across geographies."
+      ],
+      "tags": [
+        "产业动态",
+        "TechCrunch",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "TechCrunch AI: https://techcrunch.com/2026/07/13/video-generation-startup-pixverse-raises-439m-valuation-soars-past-2b/"
+      ],
+      "keyFacts": [
+        "原始信息来自 TechCrunch AI。",
+        "With the cash, the company aims to expand its world model offering and reach customers across geographies."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-1dbb10ceec9d2e3e",
+      "category": "产业动态",
+      "brand": "The Verge",
+      "brandColor": "#E3007F",
+      "logoAsset": "",
+      "title": "Lorde says Ray-Ban Meta AI glasses are ‘not sexy’",
+      "summary": "Lorde was performing at the Mad Cool Festival in Madrid on Thursday and took some time during her set to speak out against AI glasses. While she didn't specify any brands in particular, it's likely she was taking a shot at festival sponsor Ray-Ban, which has c…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "The Verge AI",
+      "sourceUrl": "https://www.theverge.com/ai-artificial-intelligence/964539/lorde-says-ray-ban-meta-ai-glasses-are-not-sexy",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Lorde was performing at the Mad Cool Festival in Madrid on Thursday and took some time during her set to speak out against AI glasses. While she didn't specify any brands in particular, it's likely she was taking a shot at festival sponsor Ray-Ban, which has c…"
+      ],
+      "tags": [
+        "产业动态",
+        "The Verge",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "The Verge AI: https://www.theverge.com/ai-artificial-intelligence/964539/lorde-says-ray-ban-meta-ai-glasses-are-not-sexy"
+      ],
+      "keyFacts": [
+        "原始信息来自 The Verge AI。",
+        "Lorde was performing at the Mad Cool Festival in Madrid on Thursday and took some time during her set to speak out against AI glasses. While she didn't specify any brands in particular, it's likely she was taking a shot at festival sponsor Ray-Ban, which has c…"
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-f6987521968b6941",
+      "category": "重要研究",
+      "brand": "arXiv",
+      "brandColor": "#B31B1B",
+      "logoAsset": "Assets/Brands/arxiv.svg",
+      "title": "A Durability and Cross-Language Transfer Benchmark for a Validated Teaching-Feedback Classification Protocol",
+      "summary": "Institutions collect far more open-ended teaching-evaluation feedback than they read. A prior study introduced a validated protocol for classifying such comments by thematic category and sentiment, built from a documented annotation guide, an intra-annotator r…",
+      "publishedAt": "2026-07-14",
+      "sourceName": "arXiv AI",
+      "sourceUrl": "https://arxiv.org/abs/2607.11873v1",
+      "readMinutes": 5,
+      "confidence": "论文原文",
+      "whyItMatters": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "details": [
+        "Institutions collect far more open-ended teaching-evaluation feedback than they read. A prior study introduced a validated protocol for classifying such comments by thematic category and sentiment, built from a documented annotation guide, an intra-annotator r…"
+      ],
+      "tags": [
+        "重要研究",
+        "arXiv",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "arXiv AI: https://arxiv.org/abs/2607.11873v1"
+      ],
+      "keyFacts": [
+        "原始信息来自 arXiv AI。",
+        "Institutions collect far more open-ended teaching-evaluation feedback than they read. A prior study introduced a validated protocol for classifying such comments by thematic category and sentiment, built from a documented annotation guide, an intra-annotator r…"
+      ],
+      "context": "前沿论文常先给出受控实验结果，能否推广到真实场景仍需要复现、对照实验和后续工作验证。",
+      "beginnerExplainer": "论文描述的是方法和实验结论，不等于技术已经成为成熟产品。",
+      "impact": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-965e2f380a4c12db",
+      "category": "产业动态",
+      "brand": "TechCrunch",
+      "brandColor": "#0A9E01",
+      "logoAsset": "",
+      "title": "Hermes agent maker Nous Research in talks for new funding at $1.5B valuation",
+      "summary": "The company is raising at least $75 million, led by Robot Ventures, with significant participation from USV and other prominent investors.",
+      "publishedAt": "2026-07-14",
+      "sourceName": "TechCrunch AI",
+      "sourceUrl": "https://techcrunch.com/2026/07/13/hermes-agent-maker-nous-research-in-talks-for-new-funding-at-1-5b-valuation/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "The company is raising at least $75 million, led by Robot Ventures, with significant participation from USV and other prominent investors."
+      ],
+      "tags": [
+        "产业动态",
+        "TechCrunch",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "TechCrunch AI: https://techcrunch.com/2026/07/13/hermes-agent-maker-nous-research-in-talks-for-new-funding-at-1-5b-valuation/"
+      ],
+      "keyFacts": [
+        "原始信息来自 TechCrunch AI。",
+        "The company is raising at least $75 million, led by Robot Ventures, with significant participation from USV and other prominent investors."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "github-853c63f738f0cecf",
+      "category": "开源项目",
+      "brand": "GitHub",
+      "brandColor": "#24292F",
+      "logoAsset": "Assets/Brands/github.svg",
+      "title": "thedotmack/claude-mem",
+      "summary": "Persistent Context Across Sessions for Every Agent – Captures everything your agent does during sessions, compresses it with AI, and injects relevant context back into future sessions. Works with Claude Code, OpenClaw, Codex, Gemini, Hermes, Copilot, OpenCode + More（★ 87,142，主要语言：JavaScript）",
+      "publishedAt": "2026-07-13",
+      "sourceName": "GitHub 项目发现",
+      "sourceUrl": "https://github.com/thedotmack/claude-mem",
+      "readMinutes": 4,
+      "confidence": "项目仓库",
+      "whyItMatters": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "details": [
+        "GitHub 当前显示约 87,142 个 Star，主要语言为 JavaScript。",
+        "仓库许可证标识：Apache-2.0；最近推送时间：2026-07-13T04:01:24Z。",
+        "Persistent Context Across Sessions for Every Agent – Captures everything your agent does during sessions, compresses it with AI, and injects relevant context back into future sessions. Works with Claude Code, OpenClaw, Codex, Gemini, Hermes, Copilot, OpenCode + More"
+      ],
+      "tags": [
+        "开源项目",
+        "GitHub",
+        "近期活跃",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "GitHub repository API: https://github.com/thedotmack/claude-mem"
+      ],
+      "keyFacts": [
+        "GitHub 当前显示约 87,142 个 Star，主要语言为 JavaScript。",
+        "仓库许可证标识：Apache-2.0；最近推送时间：2026-07-13T04:01:24Z。",
+        "Persistent Context Across Sessions for Every Agent – Captures everything your agent does during sessions, compresses it with AI, and injects relevant context back into future sessions. Works with Claude Code, OpenClaw, Codex, Gemini, Hermes, Copilot, OpenCode + More"
+      ],
+      "context": "开源 AI 生态更新很快，代码可见不代表容易复现；许可证、维护状态和部署成本同样重要。",
+      "beginnerExplainer": "开源项目允许公开检查和二次开发，但仍要核对许可证、维护频率和真实部署。",
+      "impact": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
+      "limitations": "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。",
+      "whatToWatch": "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
+    },
+    {
+      "id": "feed-49e268ec4efd02cb",
+      "category": "产业动态",
+      "brand": "The Verge",
+      "brandColor": "#E3007F",
+      "logoAsset": "",
+      "title": "Waze is getting a bunch of new AI-powered features",
+      "summary": "Waze is getting an AI makeover. Google is integrating its flagship AI assistant, Gemini, into the driving app with the goal of letting users personalize their trips a little more. Of the four new updates, only two are being described as involving Gemini. Waze…",
+      "publishedAt": "2026-07-13",
+      "sourceName": "The Verge AI",
+      "sourceUrl": "https://www.theverge.com/transportation/964132/waze-gemini-ai-voice-commands-less-chatty",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Waze is getting an AI makeover. Google is integrating its flagship AI assistant, Gemini, into the driving app with the goal of letting users personalize their trips a little more. Of the four new updates, only two are being described as involving Gemini. Waze…"
+      ],
+      "tags": [
+        "产业动态",
+        "The Verge",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "The Verge AI: https://www.theverge.com/transportation/964132/waze-gemini-ai-voice-commands-less-chatty"
+      ],
+      "keyFacts": [
+        "原始信息来自 The Verge AI。",
+        "Waze is getting an AI makeover. Google is integrating its flagship AI assistant, Gemini, into the driving app with the goal of letting users personalize their trips a little more. Of the four new updates, only two are being described as involving Gemini. Waze…"
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-3de368bdef5b54c9",
+      "category": "产业动态",
+      "brand": "WIRED",
+      "brandColor": "#111111",
+      "logoAsset": "",
+      "title": "Scientists’ Side Hustle? Using AI and Quantum Computing to Generate New Peptides",
+      "summary": "Researchers cobbled together funding and time to show how quantum computing could aid in the development of drugs to help underserved populations and combat rare diseases.",
+      "publishedAt": "2026-07-12",
+      "sourceName": "WIRED AI",
+      "sourceUrl": "https://www.wired.com/story/scientists-using-ai-and-quantum-computing-to-generate-new-peptides/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Researchers cobbled together funding and time to show how quantum computing could aid in the development of drugs to help underserved populations and combat rare diseases."
+      ],
+      "tags": [
+        "产业动态",
+        "WIRED",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "WIRED AI: https://www.wired.com/story/scientists-using-ai-and-quantum-computing-to-generate-new-peptides/"
+      ],
+      "keyFacts": [
+        "原始信息来自 WIRED AI。",
+        "Researchers cobbled together funding and time to show how quantum computing could aid in the development of drugs to help underserved populations and combat rare diseases."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    },
+    {
+      "id": "feed-3a346861aeec3b22",
+      "category": "产业动态",
+      "brand": "WIRED",
+      "brandColor": "#111111",
+      "logoAsset": "",
+      "title": "OpenAI’s Head of Safety Is Leaving the Company",
+      "summary": "Johannes Heidecke’s departure comes as OpenAI tries to further integrate its research and safety teams.",
+      "publishedAt": "2026-07-11",
+      "sourceName": "WIRED AI",
+      "sourceUrl": "https://www.wired.com/story/openai-head-of-safety-leaving/",
+      "readMinutes": 2,
+      "confidence": "专业媒体",
+      "whyItMatters": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "details": [
+        "Johannes Heidecke’s departure comes as OpenAI tries to further integrate its research and safety teams."
+      ],
+      "tags": [
+        "产业动态",
+        "WIRED",
+        "自动采集"
+      ],
+      "sourceTrail": [
+        "WIRED AI: https://www.wired.com/story/openai-head-of-safety-leaving/"
+      ],
+      "keyFacts": [
+        "原始信息来自 WIRED AI。",
+        "Johannes Heidecke’s departure comes as OpenAI tries to further integrate its research and safety teams."
+      ],
+      "context": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
+      "beginnerExplainer": "这条信息反映 AI 产品、研究或开发生态的一次公开更新。",
+      "impact": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
+      "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
+      "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。"
+    }
+  ]
+}

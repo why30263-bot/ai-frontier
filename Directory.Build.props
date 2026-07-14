@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup Condition="Exists('D:\DevTools')">
+    <BaseOutputPath>D:\DevTools\AIFrontier-build\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>D:\DevTools\AIFrontier-build\obj\</BaseIntermediateOutputPath>
+    <RestorePackagesPath>D:\DevTools\nuget-packages</RestorePackagesPath>
+  </PropertyGroup>
+</Project>

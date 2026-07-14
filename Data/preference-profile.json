@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-14T07:30:00+08:00",
+  "topicWeights": {
+    "大模型": 1.0,
+    "Agent": 1.2,
+    "开源项目": 1.1,
+    "重要研究": 1.0,
+    "产业动态": 0.8,
+    "人物观点": 0.7
+  },
+  "sourceWeights": {
+    "官方公告": 1.3,
+    "论文原文": 1.2,
+    "GitHub": 1.1,
+    "专业媒体": 0.8,
+    "社交平台": 0.5
+  },
+  "depth": "入门解释",
+  "maxItems": 18,
+  "blockedSources": [],
+  "blockedTopics": []
+}

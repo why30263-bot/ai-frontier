@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="AIFrontier.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AIFrontier">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <Thickness x:Key="PagePadding">24</Thickness>
+            <x:Double x:Key="NewsCardCornerRadius">16</x:Double>
+            <SolidColorBrush x:Key="PositiveBrush" Color="#2E8B57" />
+            <SolidColorBrush x:Key="MutedAccentBrush" Color="#5B6B8C" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
