@@ -20,6 +20,7 @@ import sys
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
@@ -48,6 +49,59 @@ def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(value)).strip()
 
 
+def clean_document_text(value: str) -> str:
+    """Keep source order and paragraph boundaries while removing page chrome markup."""
+    value = re.sub(r"<(script|style|noscript|svg)\b[^>]*>.*?</\1>", " ", value, flags=re.IGNORECASE | re.DOTALL)
+    article = re.search(r"<article\b[^>]*>(.*?)</article>", value, flags=re.IGNORECASE | re.DOTALL)
+    if article:
+        value = article.group(1)
+    value = re.sub(r"<(?:p|div|section|h[1-6]|li|blockquote|br)\b[^>]*>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"<[^>]+>", " ", value)
+    value = html.unescape(value)
+    value = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", value)
+    value = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"```.*?```", " ", value, flags=re.DOTALL)
+    lines = [re.sub(r"\s+", " ", line).strip(" #>*-\t") for line in value.splitlines()]
+    return "\n".join(line for line in lines if len(line) >= 20)
+
+
+def fetch_source_material(item: dict) -> str:
+    fallback = str(item.get("sourceMaterial") or item.get("summary") or "")
+    url = item.get("sourceUrl", "")
+    if not url.startswith("http"):
+        return fallback
+    candidates = [url]
+    parsed = urllib.parse.urlsplit(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if parsed.netloc.lower() == "github.com" and len(parts) >= 2:
+        branch = item.get("defaultBranch", "main")
+        candidates.insert(0, f"https://raw.githubusercontent.com/{parts[0]}/{parts[1]}/{branch}/README.md")
+    for candidate in candidates:
+        try:
+            payload = fetch(candidate, timeout=12)
+            if payload.startswith(b"%PDF"):
+                continue
+            decoded = payload.decode("utf-8", errors="ignore")
+            cleaned = clean_document_text(decoded)
+            if len(cleaned) >= max(500, len(fallback)):
+                return cleaned[:12000]
+        except Exception:  # noqa: BLE001
+            continue
+    return fallback[:12000]
+
+
+def attach_source_material(items: list[dict]) -> None:
+    """Fetch selected source pages concurrently; summaries remain the offline fallback."""
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        pending = {executor.submit(fetch_source_material, item): item for item in items}
+        for future in as_completed(pending):
+            item = pending[future]
+            try:
+                item["sourceMaterial"] = future.result()
+            except Exception:  # noqa: BLE001
+                item["sourceMaterial"] = item.get("sourceMaterial") or item.get("summary", "")
+
+
 def parse_date(value: str) -> dt.datetime:
     value = value.strip().replace("Z", "+00:00")
     try:
@@ -62,6 +116,17 @@ def parse_date(value: str) -> dt.datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
     return parsed
+
+
+def infer_category(default: str, title: str, description: str) -> str:
+    text = f"{title} {description}".lower()
+    agent_terms = ("agent", "agentic", "multi-agent", "autonomous agent", "tool use", "computer use", "智能体", "代理系统")
+    model_terms = ("large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型")
+    if any(term in text for term in agent_terms):
+        return "Agent"
+    if any(term in text for term in model_terms):
+        return "大模型"
+    return default
 
 
 def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
@@ -93,14 +158,45 @@ def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
         "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
         "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。",
     }
-    analysis["fullBrief"] = (
-        f"时间、参与方与范围：这条信息由 {source_name} 的公开信息源发布或记录；具体时间以条目日期为准。"
-        "如果原始摘要没有说明线下地点或开放地区，这里不作猜测。\n\n"
-        f"具体发生了什么：{summary}\n\n"
-        f"背景与原因：{analysis['context']}\n\n"
-        f"目前能看到的影响：{analysis['impact']}\n\n"
-        f"阅读边界：{analysis['limitations']} 这是一份基于当前公开材料的整理，不把论文结论、项目热度或厂商宣传自动当成普遍成立的事实。"
-    )
+    section_sets = {
+        "重要研究": [
+            ("研究背景", analysis["context"]),
+            ("研究要解决的问题", summary),
+            ("方法与实验思路", "当前来源摘要只提供了方法概览，具体模型、数据集、对照实验和评价指标需要回到论文原文核对。"),
+            ("主要结果与贡献", analysis["impact"]),
+            ("证据边界", analysis["limitations"]),
+        ],
+        "开源项目": [
+            ("它想解决什么问题", analysis["context"]),
+            ("项目怎样工作", summary),
+            ("目前提供了什么", "当前可确认的信息来自项目仓库；功能范围、安装步骤和示例应以 README 与 Release 为准。"),
+            ("适合谁关注", analysis["impact"]),
+            ("成熟度、成本与风险", f"{analysis['limitations']} {analysis['whatToWatch']}"),
+        ],
+        "大模型": [
+            ("发布信息与适用范围", summary),
+            ("这次更新了什么", "来源摘要没有列出的能力、价格、地区和开放条件不作补写。"),
+            ("能力和使用方式的变化", analysis["impact"]),
+            ("行业背景", analysis["context"]),
+            ("限制与待验证问题", f"{analysis['limitations']} {analysis['whatToWatch']}"),
+        ],
+        "Agent": [
+            ("任务与使用场景", analysis["context"]),
+            ("Agent 怎样完成任务", summary),
+            ("关键能力与流程", "需要结合原文核对它调用了哪些工具、如何规划步骤、怎样检查结果以及失败后如何恢复。"),
+            ("可能带来的变化", analysis["impact"]),
+            ("可靠性、权限与失败风险", f"{analysis['limitations']} {analysis['whatToWatch']}"),
+        ],
+    }
+    sections = section_sets.get(category, [
+        ("新闻导语", summary),
+        ("事件经过", "当前来源摘要提供了事件主线；人物、机构、数字和时间节点应以原始报道为准。"),
+        ("参与方、时间与范围", f"信息来自 {source_name}；来源未说明的地点或市场范围不作猜测。"),
+        ("背景与原因", analysis["context"]),
+        ("影响与下一步", f"{analysis['impact']} {analysis['whatToWatch']}"),
+    ])
+    analysis["briefSections"] = [{"title": title, "body": body} for title, body in sections]
+    analysis["fullBrief"] = "\n\n".join(f"{title}\n{body}" for title, body in sections)
     return analysis
 
 
@@ -128,10 +224,11 @@ def parse_feed(source: dict) -> list[dict]:
         summary = description[:260].rstrip() + ("…" if len(description) > 260 else "")
         if not summary:
             summary = "由独立采集器从官方信息源发现，建议打开原文查看完整内容。"
-        analysis = fallback_analysis(source["category"], summary, source["name"])
+        category = infer_category(source["category"], title, description)
+        analysis = fallback_analysis(category, summary, source["name"])
         item = {
             "id": "feed-" + hashlib.sha256(link.encode()).hexdigest()[:16],
-            "category": source["category"],
+            "category": category,
             "brand": source["brand"],
             "brandColor": source["brandColor"],
             "logoAsset": source.get("logoAsset", ""),
@@ -145,7 +242,7 @@ def parse_feed(source: dict) -> list[dict]:
             "confidence": source.get("trust", "官方来源"),
             "whyItMatters": analysis["impact"],
             "details": [summary],
-            "tags": [source["category"], source["brand"], "自动采集"],
+            "tags": [category, source["brand"], "自动采集"],
             "sourceTrail": [f"{source['name']}: {link}"],
             **analysis,
         }
@@ -157,65 +254,75 @@ def collect_github(config: dict) -> list[dict]:
     discovery = config.get("githubDiscovery", {})
     if not discovery.get("enabled", True):
         return []
-    since = (dt.date.today() - dt.timedelta(days=int(config.get("supplementDays", 7)))).isoformat()
-    query = f"{discovery.get('query', 'topic:artificial-intelligence stars:>500')} pushed:>={since}"
-    url = "https://api.github.com/search/repositories?" + urllib.parse.urlencode({
-        "q": query,
-        "sort": "stars",
-        "order": "desc",
-        "per_page": min(10, int(discovery.get("maxItems", 4)) * 2),
-    })
-    request = urllib.request.Request(url, headers={
-        "User-Agent": USER_AGENT,
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    })
-    try:
-        payload = json.loads(urllib.request.urlopen(request, timeout=20).read().decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        print(f"warning: GitHub project discovery: {exc}", file=sys.stderr)
-        return []
-
     output: list[dict] = []
-    for repository in payload.get("items", []):
-        stars = int(repository.get("stargazers_count", 0))
-        if stars < int(discovery.get("minimumStars", 500)):
+    since = (dt.date.today() - dt.timedelta(days=int(config.get("supplementDays", 14)))).isoformat()
+    query_specs = discovery.get("queries") or [{
+        "query": discovery.get("query", "topic:artificial-intelligence stars:>500"),
+        "category": "开源项目",
+        "minimumStars": discovery.get("minimumStars", 500),
+        "maxItems": discovery.get("maxItems", 4),
+    }]
+    for spec in query_specs:
+        query = f"{spec['query']} pushed:>={since}"
+        url = "https://api.github.com/search/repositories?" + urllib.parse.urlencode({
+            "q": query,
+            "sort": "stars",
+            "order": "desc",
+            "per_page": min(10, int(spec.get("maxItems", 4)) * 2),
+        })
+        request = urllib.request.Request(url, headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        })
+        try:
+            payload = json.loads(urllib.request.urlopen(request, timeout=20).read().decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"warning: GitHub project discovery ({spec.get('category')}): {exc}", file=sys.stderr)
             continue
-        title = repository.get("full_name", "")
-        link = repository.get("html_url", "")
-        description = clean_text(repository.get("description") or "仓库近期保持活跃，建议打开 README 与提交记录进一步判断用途。")
-        language = repository.get("language") or "未标注"
-        license_name = (repository.get("license") or {}).get("spdx_id") or "未标注"
-        summary = f"{description}（★ {stars:,}，主要语言：{language}）"
-        analysis = fallback_analysis("开源项目", summary, "GitHub 仓库")
-        analysis["keyFacts"] = [
-            f"GitHub 当前显示约 {stars:,} 个 Star，主要语言为 {language}。",
-            f"仓库许可证标识：{license_name}；最近推送时间：{repository.get('pushed_at', '未知')}。",
-            description,
-        ]
-        analysis["limitations"] = "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。"
-        analysis["whatToWatch"] = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
-        output.append({
+        category = spec.get("category", "开源项目")
+        minimum_stars = int(spec.get("minimumStars", 100))
+        for repository in payload.get("items", [])[:int(spec.get("maxItems", 4))]:
+            stars = int(repository.get("stargazers_count", 0))
+            if stars < minimum_stars:
+                continue
+            title = repository.get("full_name", "")
+            link = repository.get("html_url", "")
+            description = clean_text(repository.get("description") or "仓库近期保持活跃，建议打开 README 与提交记录进一步判断用途。")
+            language = repository.get("language") or "未标注"
+            license_name = (repository.get("license") or {}).get("spdx_id") or "未标注"
+            summary = f"{description}（★ {stars:,}，主要语言：{language}）"
+            analysis = fallback_analysis(category, summary, "GitHub 仓库")
+            analysis["keyFacts"] = [
+                f"GitHub 当前显示约 {stars:,} 个 Star，主要语言为 {language}。",
+                f"仓库许可证标识：{license_name}；最近推送时间：{repository.get('pushed_at', '未知')}。",
+                description,
+            ]
+            analysis["limitations"] = "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。"
+            analysis["whatToWatch"] = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
+            output.append({
             "id": "github-" + hashlib.sha256(link.encode()).hexdigest()[:16],
-            "category": "开源项目",
+            "category": category,
             "brand": "GitHub",
             "brandColor": "#24292F",
             "logoAsset": "Assets/Brands/github.svg",
             "title": title,
             "summary": summary,
             "sourceMaterial": f"{description} Star: {stars:,}; 主要语言: {language}; 许可证: {license_name}; 最近推送: {repository.get('pushed_at', '未知')}。",
+            "defaultBranch": repository.get("default_branch") or "main",
             "publishedAt": (repository.get("pushed_at") or dt.datetime.now(dt.timezone.utc).isoformat())[:10],
-            "sourceName": "GitHub 项目发现",
+            "sourceName": f"GitHub {category}项目发现",
             "sourceUrl": link,
             "readMinutes": 4,
             "confidence": "项目仓库",
             "whyItMatters": analysis["impact"],
             "details": analysis["keyFacts"],
-            "tags": ["开源项目", "GitHub", "近期活跃", "自动采集"],
+            "tags": [category, "GitHub", "近期活跃", "补充发现", "自动采集"],
             "sourceTrail": [f"GitHub repository API: {link}"],
             **analysis,
-        })
-    return output[:int(discovery.get("maxItems", 4))]
+            })
+    deduplicated = {item["sourceUrl"]: item for item in output}
+    return list(deduplicated.values())
 
 
 def normalize_title(title: str) -> str:
@@ -238,7 +345,19 @@ def diversify(collected: list[dict], maximum: int, per_source: int) -> list[dict
     return selected
 
 
-def merge(existing: list[dict], collected: list[dict], maximum: int, per_source: int) -> list[dict]:
+def balance_categories(items: list[dict], maximum: int, minimums: dict[str, int]) -> list[dict]:
+    ordered = sorted(items, key=lambda item: item.get("publishedAt", ""), reverse=True)
+    remaining = list(ordered)
+    selected: list[dict] = []
+    for category, count in minimums.items():
+        matches = [item for item in remaining if item.get("category") == category][:int(count)]
+        selected.extend(matches)
+        remaining = [item for item in remaining if item not in matches]
+    selected.extend(remaining[:max(0, maximum - len(selected))])
+    return selected[:maximum]
+
+
+def merge(existing: list[dict], collected: list[dict], maximum: int, per_source: int, minimums: dict[str, int]) -> list[dict]:
     output: list[dict] = []
     urls: set[str] = set()
     titles: set[str] = set()
@@ -252,11 +371,12 @@ def merge(existing: list[dict], collected: list[dict], maximum: int, per_source:
         urls.add(url)
         titles.add(title)
         output.append(item)
-    output.sort(key=lambda item: item.get("publishedAt", ""), reverse=True)
-    return output[:maximum]
+    return balance_categories(output, maximum, minimums)
 
 
-def apply_freshness(items: list[dict], fresh_hours: int, supplement_days: int, target: int) -> list[dict]:
+def apply_freshness(
+    items: list[dict], fresh_hours: int, supplement_days: int, target: int, minimums: dict[str, int]
+) -> list[dict]:
     today = dt.date.today()
     fresh_cutoff = today - dt.timedelta(days=max(1, fresh_hours // 24))
     supplement_cutoff = today - dt.timedelta(days=max(1, supplement_days))
@@ -268,12 +388,23 @@ def apply_freshness(items: list[dict], fresh_hours: int, supplement_days: int, t
             return today
 
     fresh = [item for item in items if published_date(item) >= fresh_cutoff]
-    if len(fresh) >= target:
-        return fresh
     supplements = [item for item in items if supplement_cutoff <= published_date(item) < fresh_cutoff]
-    for item in supplements:
-        item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
-    return [*fresh, *supplements]
+    selected = list(fresh)
+    for category, minimum in minimums.items():
+        missing = max(0, int(minimum) - sum(item.get("category") == category for item in selected))
+        additions = [item for item in supplements if item.get("category") == category and item not in selected][:missing]
+        for item in additions:
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
+        selected.extend(additions)
+    if len(selected) < target:
+        for item in supplements:
+            if item in selected:
+                continue
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
+            selected.append(item)
+            if len(selected) >= target:
+                break
+    return selected
 
 
 def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
@@ -285,10 +416,10 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"title", "summary", "fullBrief", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
+    allowed = {"title", "summary", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"}
     enriched_count = 0
-    for start in range(0, len(items), 6):
-        batch = items[start:start + 6]
+    for start in range(0, len(items), 3):
+        batch = items[start:start + 3]
         material = [
             {
                 "id": item["id"],
@@ -305,10 +436,16 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             for item in batch
         ]
         prompt = (
-            "你是面向 AI 初学者的严谨中文科技编辑。只依据给定标题、来源摘要和来源身份，不补造事实。"
-            "把 title 改写为自然、准确的中文标题，并生成：summary(60-120字)、fullBrief(350-600字，分3-5段，明确交代"
-            "什么人或机构、时间、地点或适用范围、做了什么、结果与影响；来源未说明的要明确写未说明，不能猜测)、"
-            "keyFacts(2-4条)、context、beginnerExplainer、impact、limitations、whatToWatch。避免重复同一句话，明确区分事实、解释和判断。"
+            "你是一名严谨的中文科技记者，读者了解 AI 不多。只依据给定的原始材料，不补造事实，也不要把来源网页中的导航、广告或推荐内容当正文。"
+            "先按原文的事实顺序压缩长文，再根据 category 采用固定报道结构，生成 briefSections（严格为5个对象，每个含 title 和 body，"
+            "总计450-800个中文字符，每段是连贯报道，不是关键词堆砌）："
+            "重要研究=研究背景/研究要解决的问题/方法与实验思路/主要结果与核心贡献/证据边界；"
+            "开源项目=它想解决什么问题/项目怎样工作/目前提供了什么/适合谁关注/成熟度、成本与风险；"
+            "大模型=发布信息与适用范围/这次更新了什么/能力和使用方式的变化/行业背景/限制与待验证问题；"
+            "Agent=任务与使用场景/Agent怎样完成任务/关键能力与流程/可能带来的变化/可靠性、权限与失败风险；"
+            "其他新闻=新闻导语/事件经过/参与方、时间与地点或范围/背景与原因/影响与下一步。"
+            "论文必须提取方法、实验或结果，不能用产业新闻模板；新闻必须像记者报道事件，不能用论文模板。来源未说明的内容明确写未说明。"
+            "另生成 title、summary(80-140字)、keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch。避免各字段重复同一句话。"
             "返回严格 JSON 对象，格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
@@ -336,13 +473,24 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             for item in batch:
                 changed = False
                 for key, value in by_id.get(item["id"], {}).items():
-                    if key in allowed and value:
+                    if key == "briefSections":
+                        valid_sections = [
+                            section for section in value
+                            if isinstance(section, dict) and section.get("title") and section.get("body")
+                        ] if isinstance(value, list) else []
+                        if len(valid_sections) == 5:
+                            item[key] = valid_sections
+                            changed = True
+                    elif key in allowed and value:
                         item[key] = value
                         changed = True
                 if changed:
                     enriched_count += 1
                 item["whyItMatters"] = item.get("impact", item["whyItMatters"])
                 item["details"] = item.get("keyFacts", item["details"])
+                item["fullBrief"] = "\n\n".join(
+                    f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
+                )
                 item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
@@ -361,11 +509,13 @@ def main() -> int:
     current = json.loads(output_path.read_text(encoding="utf-8")) if output_path.exists() else {"items": []}
     collected = [item for source in config["feeds"] for item in parse_feed(source)]
     collected.extend(collect_github(config))
+    minimums = {key: int(value) for key, value in config.get("categoryMinimums", {}).items()}
     collected = apply_freshness(
         collected,
         int(config.get("freshHours", 72)),
         int(config.get("supplementDays", 7)),
         int(config.get("maxItems", 18)),
+        minimums,
     )
     existing = [] if args.drop_existing else current.get("items", [])
     items = merge(
@@ -373,10 +523,13 @@ def main() -> int:
         collected,
         int(config.get("maxItems", 18)),
         int(config.get("maxItemsPerSource", 4)),
+        minimums,
     )
+    attach_source_material(items)
     items, enriched_count = enrich_with_ai(items)
     for item in items:
         item.pop("sourceMaterial", None)
+        item.pop("defaultBranch", None)
     ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
     if ai_requested and enriched_count < max(1, len(items) // 2) and current.get("items"):
         print("warning: Chinese editorial enrichment was incomplete; preserving the previous edition", file=sys.stderr)

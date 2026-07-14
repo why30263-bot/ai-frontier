@@ -13,6 +13,9 @@ public partial class MainPageViewModel : ObservableObject
     private readonly UpdateService _updateService = new();
     private readonly CodexIntegrationService _codexIntegrationService = new();
     private readonly List<NewsItem> _allItems = [];
+    private List<NewsItem> _filteredItems = [];
+    private const int BatchSize = 10;
+    private int _batchStart;
     private string _activeCategory = "全部";
     private bool _savedOnly;
     private readonly HashSet<string> _bookmarkedIds = [];
@@ -48,6 +51,9 @@ public partial class MainPageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string CodexWorkspacePath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string BatchLabel { get; set; } = "每批 10 条";
 
     public async Task LoadAsync()
     {
@@ -115,6 +121,18 @@ public partial class MainPageViewModel : ObservableObject
 
     public void Select(NewsItem item) => SelectedItem = item;
 
+    public void NextBatch()
+    {
+        if (_filteredItems.Count <= BatchSize)
+        {
+            ShowFeedback($"当前栏目共 {_filteredItems.Count} 条，没有下一批");
+            return;
+        }
+        _batchStart = (_batchStart + BatchSize) % _filteredItems.Count;
+        RenderBatch();
+        ShowFeedback("已换一批；每批固定显示 10 条，不重复凑数");
+    }
+
     public async Task RecordFeedbackAsync(string action, double? score = null)
     {
         if (SelectedItem is null)
@@ -173,13 +191,55 @@ public partial class MainPageViewModel : ObservableObject
              item.Summary.Contains(query, StringComparison.OrdinalIgnoreCase) ||
              item.Tags.Any(tag => tag.Contains(query, StringComparison.OrdinalIgnoreCase))));
 
+        _filteredItems = BalanceForHome(filtered.ToList());
+        _batchStart = 0;
+        RenderBatch(selectedId);
+    }
+
+    private void RenderBatch(string? selectedId = null)
+    {
         Items.Clear();
-        foreach (var item in filtered)
+        var take = Math.Min(BatchSize, _filteredItems.Count);
+        for (var index = 0; index < take; index++)
         {
-            Items.Add(item);
+            Items.Add(_filteredItems[(_batchStart + index) % _filteredItems.Count]);
+        }
+        BatchLabel = _filteredItems.Count > BatchSize
+            ? $"本批 {take} 条 · 共 {_filteredItems.Count} 条"
+            : $"本批 {take} 条";
+        SelectedItem = Items.FirstOrDefault(item => item.Id == selectedId) ?? Items.FirstOrDefault();
+    }
+
+    private List<NewsItem> BalanceForHome(List<NewsItem> items)
+    {
+        if (_activeCategory != "全部" || _savedOnly || SearchText.Trim().Length > 0)
+        {
+            return items;
         }
 
-        SelectedItem = Items.FirstOrDefault(item => item.Id == selectedId) ?? Items.FirstOrDefault();
+        var remaining = new List<NewsItem>(items);
+        var front = new List<NewsItem>();
+        var minimums = new (string Category, int Count)[]
+        {
+            ("大模型", 2),
+            ("Agent", 2),
+            ("重要研究", 2),
+            ("开源项目", 2),
+            ("产业动态", 2)
+        };
+        for (var round = 0; round < minimums.Max(rule => rule.Count); round++)
+        {
+            foreach (var (category, count) in minimums)
+            {
+                if (round >= count) continue;
+                var item = remaining.FirstOrDefault(item => item.Category == category);
+                if (item is null) continue;
+                front.Add(item);
+                remaining.Remove(item);
+            }
+        }
+        front.AddRange(remaining);
+        return front;
     }
 
     private void ShowFeedback(string message)

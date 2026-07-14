@@ -14,19 +14,36 @@ public sealed partial class BuiltInCollectorService
 
     public async Task<IReadOnlyList<NewsItem>> CollectAsync(FeedConfiguration configuration)
     {
-        var tasks = configuration.Feeds.Select(CollectFeedSafeAsync).ToArray();
-        var results = (await Task.WhenAll(tasks)).ToList();
+        var tasks = configuration.Feeds
+            .Select(source => CollectFeedSafeAsync(source))
+            .ToList();
         if (configuration.GitHubDiscovery.Enabled)
         {
-            results.Add(await CollectGitHubSafeAsync(configuration));
+            var queries = configuration.GitHubDiscovery.Queries.Count > 0
+                ? configuration.GitHubDiscovery.Queries
+                : [new GitHubDiscoveryQuery
+                {
+                    Query = configuration.GitHubDiscovery.Query,
+                    Category = "开源项目",
+                    MinimumStars = configuration.GitHubDiscovery.MinimumStars,
+                    MaxItems = configuration.GitHubDiscovery.MaxItems
+                }];
+            tasks.AddRange(queries.Select(query => CollectGitHubSafeAsync(configuration, query)));
         }
+        var results = (await Task.WhenAll(tasks)).ToList();
         var freshCutoff = DateTimeOffset.UtcNow.AddHours(-Math.Max(24, configuration.FreshHours));
         var supplementCutoff = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, configuration.SupplementDays));
-        var freshCount = results.Sum(items => items.Count(item => !DateTimeOffset.TryParse(item.PublishedAt, out var date) || date >= freshCutoff));
+        var eligible = results
+            .SelectMany(items => items)
+            .Where(item => !DateTimeOffset.TryParse(item.PublishedAt, out var date) || date >= supplementCutoff)
+            .ToList();
+        foreach (var item in eligible.Where(item => DateTimeOffset.TryParse(item.PublishedAt, out var date) && date < freshCutoff))
+        {
+            if (!item.Tags.Contains("补充阅读")) item.Tags.Add("补充阅读");
+        }
         var queues = results
             .Select(items => new Queue<NewsItem>(items
-                .Where(item => !DateTimeOffset.TryParse(item.PublishedAt, out var date) ||
-                    date >= freshCutoff || (freshCount < configuration.MaxItems && date >= supplementCutoff))
+                .Where(item => eligible.Contains(item))
                 .OrderByDescending(item => item.PublishedAt)
                 .Take(Math.Max(1, configuration.MaxItemsPerSource))))
             .Where(queue => queue.Count > 0)
@@ -54,14 +71,15 @@ public sealed partial class BuiltInCollectorService
             }
         }
 
-        return selected.OrderByDescending(item => item.PublishedAt).ToList();
+        return EnsureCategoryCoverage(selected, eligible, configuration);
     }
 
-    private async Task<IReadOnlyList<NewsItem>> CollectGitHubSafeAsync(FeedConfiguration configuration)
+    private async Task<IReadOnlyList<NewsItem>> CollectGitHubSafeAsync(
+        FeedConfiguration configuration,
+        GitHubDiscoveryQuery discovery)
     {
         try
         {
-            var discovery = configuration.GitHubDiscovery;
             var since = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, configuration.SupplementDays)).ToString("yyyy-MM-dd");
             var query = Uri.EscapeDataString($"{discovery.Query} pushed:>={since}");
             var url = $"https://api.github.com/search/repositories?q={query}&sort=stars&order=desc&per_page={Math.Clamp(discovery.MaxItems * 2, 1, 10)}";
@@ -89,27 +107,27 @@ public sealed partial class BuiltInCollectorService
                 output.Add(new NewsItem
                 {
                     Id = Slug(link),
-                    Category = "开源项目",
+                    Category = discovery.Category,
                     Brand = "GitHub",
                     BrandColor = "#24292F",
                     LogoAsset = "Assets/Brands/github.svg",
                     Title = title,
                     Summary = summary,
                     PublishedAt = DateTimeOffset.Parse(pushedAt).ToLocalTime().ToString("yyyy-MM-dd"),
-                    SourceName = "GitHub 项目发现",
+                    SourceName = $"GitHub {discovery.Category}项目发现",
                     SourceUrl = link,
                     ReadMinutes = 4,
                     Confidence = "项目仓库",
-                    WhyItMatters = WhyItMatters("开源项目"),
+                    WhyItMatters = WhyItMatters(discovery.Category),
                     KeyFacts = [$"GitHub 当前显示约 {stars:N0} 个 Star，主要语言为 {language}。", description],
                     Context = "该仓库由内置发现器从近期仍在更新、且已有一定社区关注度的 AI 项目中筛选。",
-                    BeginnerExplainer = BeginnerExplanation("开源项目"),
-                    Impact = WhyItMatters("开源项目"),
+                    BeginnerExplainer = BeginnerExplanation(discovery.Category),
+                    Impact = WhyItMatters(discovery.Category),
                     Limitations = "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。",
                     WhatToWatch = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。",
                     Details = [$"GitHub 当前显示约 {stars:N0} 个 Star，主要语言为 {language}。", description],
                     SourceTrail = [$"GitHub repository API: {link}"],
-                    Tags = ["开源项目", "GitHub", "近期活跃", "自动采集"]
+                    Tags = [discovery.Category, "GitHub", "近期活跃", "补充发现", "自动采集"]
                 });
             }
             return output.Take(discovery.MaxItems).ToList();
@@ -175,10 +193,11 @@ public sealed partial class BuiltInCollectorService
             summary = "由客户端从官方信息源自动发现。打开详情可查看来源和进一步核查提示。";
         }
 
+        var category = InferCategory(source.Category, title, description);
         return new NewsItem
         {
             Id = Slug(link),
-            Category = source.Category,
+            Category = category,
             Brand = source.Brand,
             BrandColor = source.BrandColor,
             LogoAsset = source.LogoAsset,
@@ -189,17 +208,54 @@ public sealed partial class BuiltInCollectorService
             SourceUrl = link,
             ReadMinutes = Math.Clamp((description.Length / 350) + 2, 2, 8),
             Confidence = source.Trust,
-            WhyItMatters = WhyItMatters(source.Category),
+            WhyItMatters = WhyItMatters(category),
             KeyFacts = [summary],
             Context = "这条信息由应用内置采集器直接从配置中的官方 RSS、Atom 或公开 API 获取。",
-            BeginnerExplainer = BeginnerExplanation(source.Category),
+            BeginnerExplainer = BeginnerExplanation(category),
             Impact = "是否形成实际影响仍取决于原文披露的能力、开放范围、成本和后续采用情况。",
             Limitations = "自动采集只能确认来源发布了该内容，不能替代人工复核、跨来源验证或专业测评。",
             WhatToWatch = "继续观察官方文档、代码仓库、评测结果和真实用户反馈是否出现可验证更新。",
             Details = [summary, "本条为内置采集器的保底结果；连接 GitHub 编辑源或 Codex 后可获得更完整的中文分析。"],
             SourceTrail = [$"{source.Name}: {link}"],
-            Tags = [source.Category, source.Brand, "自动采集"]
+            Tags = [category, source.Brand, "自动采集"]
         };
+    }
+
+    private static List<NewsItem> EnsureCategoryCoverage(
+        IEnumerable<NewsItem> selected,
+        IEnumerable<NewsItem> eligible,
+        FeedConfiguration configuration)
+    {
+        var pool = eligible
+            .Concat(selected)
+            .GroupBy(item => item.SourceUrl, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(item => item.PublishedAt)
+            .ToList();
+        var result = new List<NewsItem>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (category, minimum) in configuration.CategoryMinimums)
+        {
+            foreach (var item in pool.Where(item => item.Category == category).Take(minimum))
+            {
+                if (seen.Add(item.SourceUrl)) result.Add(item);
+            }
+        }
+        foreach (var item in selected.Concat(pool))
+        {
+            if (result.Count >= configuration.MaxItems) break;
+            if (seen.Add(item.SourceUrl)) result.Add(item);
+        }
+        return result.Take(configuration.MaxItems).ToList();
+    }
+
+    private static string InferCategory(string fallback, string title, string description)
+    {
+        var text = $"{title} {description}".ToLowerInvariant();
+        var agentTerms = new[] { "agent", "agentic", "multi-agent", "tool use", "computer use", "智能体", "代理系统" };
+        if (agentTerms.Any(text.Contains)) return "Agent";
+        var modelTerms = new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型" };
+        return modelTerms.Any(text.Contains) ? "大模型" : fallback;
     }
 
     private static string Value(XElement parent, string localName) =>
