@@ -16,7 +16,7 @@
 
 | 层级 | 作用 | 是否依赖 AI |
 | --- | --- | --- |
-| GitHub 公共编辑源 | 每 4 小时采集、去重并发布共享 `Data/news.json` | 否 |
+| GitHub 公共编辑源 | 每 4 小时采集、去重并发布共享 `Data/news.json` | 自动使用 GitHub Models 做中文编辑，不依赖 Codex |
 | 客户端内置采集器 | 公共编辑源超过 18 小时未更新时，直接读取 RSS、Atom、公开 API 与 GitHub 项目搜索 | 否 |
 | 可选编辑增强 | 可由兼容接口或本机 Codex 把来源摘要改写成更完整的中文分析 | 是，可选 |
 
@@ -48,7 +48,7 @@
 
 ## 可选 AI / Codex 增强
 
-固定采集器始终可独立运行。若希望自动生成更完整的中文编辑稿，可在仓库 Actions 中配置：
+固定采集器始终可独立运行。公开仓库的 Actions 默认使用 GitHub 自动提供的 `GITHUB_TOKEN` 调用 GitHub Models，把标题、摘要和详细分析统一改写成中文，不需要配置 Codex 或单独购买 API Key。若希望替换为自己的兼容接口，可配置：
 
 - Secret：`AI_API_KEY`
 - Variable：`AI_API_BASE`（兼容 `/chat/completions`）
