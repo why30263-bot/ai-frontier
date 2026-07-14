@@ -15,6 +15,7 @@ public sealed class NewsService
     };
 
     private readonly BuiltInCollectorService _collector = new();
+    private static readonly SemaphoreSlim BackgroundRefreshGate = new(1, 1);
     private readonly string _cacheRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AIFrontier",
@@ -24,19 +25,16 @@ public sealed class NewsService
     {
         var configuration = await LoadConfigurationAsync();
         var localEdition = await LoadLocalEditionAsync();
+        var cachedEdition = await TryLoadCacheEditionAsync();
         var remoteEdition = await TryLoadRemoteEditionAsync(configuration.RemoteNewsUrl);
-        var edition = ChooseNewest(localEdition, remoteEdition);
+        var edition = ChooseNewest(ChooseNewest(localEdition, cachedEdition), remoteEdition);
 
         var lacksRequiredCategories = configuration.CategoryMinimums.Any(pair =>
             edition.Items.Count(item => item.Category == pair.Key) < pair.Value);
         if (edition.Items.Count < 10 || lacksRequiredCategories ||
             DateTimeOffset.Now - edition.GeneratedAt > TimeSpan.FromHours(configuration.StaleAfterHours))
         {
-            var collected = await _collector.CollectAsync(configuration);
-            edition.Items = Merge(edition.Items, collected, configuration);
-            edition.GeneratedAt = DateTimeOffset.Now;
-            edition.EditionDate = DateTimeOffset.Now.ToString("yyyy-MM-dd");
-            edition.WindowHours = 72;
+            _ = RefreshCacheInBackgroundAsync(edition, configuration);
         }
 
         foreach (var item in edition.Items)
@@ -50,6 +48,58 @@ public sealed class NewsService
             JsonSerializer.Serialize(edition, JsonOptions),
             new UTF8Encoding(false));
         return edition;
+    }
+
+    private async Task RefreshCacheInBackgroundAsync(NewsEdition current, FeedConfiguration configuration)
+    {
+        if (!await BackgroundRefreshGate.WaitAsync(0))
+        {
+            return;
+        }
+        try
+        {
+            var collected = await _collector.CollectAsync(configuration);
+            var refreshed = new NewsEdition
+            {
+                SchemaVersion = current.SchemaVersion,
+                EditionDate = DateTimeOffset.Now.ToString("yyyy-MM-dd"),
+                WindowHours = 72,
+                GeneratedAt = DateTimeOffset.Now,
+                Items = Merge(current.Items, collected, configuration)
+            };
+            foreach (var item in refreshed.Items)
+            {
+                EnrichForReading(item);
+            }
+            Directory.CreateDirectory(_cacheRoot);
+            await File.WriteAllTextAsync(
+                Path.Combine(_cacheRoot, "news.json"),
+                JsonSerializer.Serialize(refreshed, JsonOptions),
+                new UTF8Encoding(false));
+        }
+        catch
+        {
+            // The currently displayed public or bundled edition remains usable.
+        }
+        finally
+        {
+            BackgroundRefreshGate.Release();
+        }
+    }
+
+    private async Task<NewsEdition?> TryLoadCacheEditionAsync()
+    {
+        var path = Path.Combine(_cacheRoot, "news.json");
+        if (!File.Exists(path)) return null;
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await JsonSerializer.DeserializeAsync<NewsEdition>(stream, JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static async Task<NewsEdition> LoadLocalEditionAsync()
@@ -93,7 +143,7 @@ public sealed class NewsService
         }
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             return await Http.GetFromJsonAsync<NewsEdition>(url, JsonOptions, timeout.Token);
         }
         catch
@@ -247,43 +297,43 @@ public sealed class NewsService
         {
             "重要研究" =>
             [
-                Section("研究背景", item.Context),
-                Section("研究要解决的问题", item.Summary),
-                Section("方法与实验思路", factText),
-                Section("主要结果与贡献", $"{item.Impact} 当前材料表明这项工作的价值首先在于研究问题、方法或实验发现本身。"),
+                Section("研究结论", item.Summary),
+                Section("核心贡献", $"{item.Impact} 当前材料表明这项工作的价值首先在于研究问题、方法或实验发现本身。"),
+                Section("方法与实验", factText),
+                Section("结果意味着什么", item.Context),
                 Section("证据边界", $"{item.Limitations} 论文结论只覆盖作者给出的数据、任务和实验条件，仍需独立复现。")
             ],
             "开源项目" =>
             [
-                Section("它想解决什么问题", item.Context),
-                Section("项目怎样工作", item.Summary),
-                Section("目前提供了什么", factText),
-                Section("适合谁关注", $"{item.BeginnerExplainer} {item.Impact}"),
+                Section("它是什么，做到了什么", item.Summary),
+                Section("核心贡献", $"{item.Impact} {factText}"),
+                Section("它怎样工作", item.Context),
+                Section("谁会用到", item.BeginnerExplainer),
                 Section("成熟度、成本与风险", $"{item.Limitations} {item.WhatToWatch}")
             ],
             "大模型" =>
             [
-                Section("发布信息与适用范围", $"这条信息对应 {item.PublishedAt} 的公开资料，来源为 {item.SourceName}。{item.Summary}"),
-                Section("这次更新了什么", factText),
-                Section("能力和使用方式有什么变化", $"{item.BeginnerExplainer} {item.Impact}"),
-                Section("行业背景", item.Context),
+                Section("这次真正带来了什么", item.Summary),
+                Section("核心能力与改进", factText),
+                Section("怎样使用", item.BeginnerExplainer),
+                Section("对谁有影响", $"{item.Impact} {item.Context}"),
                 Section("限制与待验证问题", $"{item.Limitations} {item.WhatToWatch}")
             ],
             "Agent" =>
             [
-                Section("任务与使用场景", item.Context),
-                Section("Agent 怎样完成任务", item.Summary),
-                Section("关键能力与流程", factText),
-                Section("可能带来的变化", $"{item.BeginnerExplainer} {item.Impact}"),
+                Section("它能完成什么任务", item.Summary),
+                Section("关键贡献", $"{item.Impact} {factText}"),
+                Section("它怎样行动", item.Context),
+                Section("实际价值", item.BeginnerExplainer),
                 Section("可靠性、权限与失败风险", $"{item.Limitations} {item.WhatToWatch}")
             ],
             _ =>
             [
-                Section("新闻导语", item.Summary),
-                Section("事件经过", factText),
-                Section("参与方、时间与范围", $"这条信息对应 {item.PublishedAt} 的公开报道，来源为 {item.SourceName}。具体地点或市场范围以原始来源披露为准；原文未说明时不作猜测。"),
-                Section("背景与原因", item.Context),
-                Section("影响与下一步", $"{item.Impact} {item.WhatToWatch} {item.Limitations}")
+                Section("发生了什么", item.Summary),
+                Section("关键变化", factText),
+                Section("事件经过", item.Context),
+                Section("会带来什么影响", item.Impact),
+                Section("接下来要看什么", $"{item.WhatToWatch} {item.Limitations}")
             ]
         };
     }

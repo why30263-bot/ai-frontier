@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Collect official feeds
-        run: python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json
+        run: python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json --drop-existing
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY || github.token }}
           AI_API_BASE: ${{ vars.AI_API_BASE || 'https://models.github.ai/inference' }}

@@ -66,7 +66,7 @@ public sealed class NewsItem
         : new SvgImageSource(LogoUri);
 
     [JsonIgnore]
-    public string ReadingMeta => $"{PublishedAt}  ·  {ReadMinutes} 分钟  ·  {Confidence}";
+    public string ReadingMeta => $"{PublishedAt}  ·  {ReadMinutes} 分钟";
 
     [JsonIgnore]
     public string AccessibleTitle => $"{Category}，{Title}，来源 {SourceName}";

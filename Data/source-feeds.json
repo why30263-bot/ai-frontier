@@ -10,11 +10,11 @@
   "freshHours": 72,
   "supplementDays": 14,
   "categoryMinimums": {
-    "大模型": 4,
-    "Agent": 4,
-    "开源项目": 4,
-    "重要研究": 4,
-    "产业动态": 4
+    "大模型": 5,
+    "Agent": 5,
+    "开源项目": 5,
+    "重要研究": 6,
+    "产业动态": 3
   },
   "githubDiscovery": {
     "enabled": true,
