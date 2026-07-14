@@ -68,28 +68,28 @@ public sealed class NewsItem
         : new SvgImageSource(LogoUri);
 
     [JsonIgnore]
-    public string ReadingMeta => $"{PublishedAt}  ?  {ReadMinutes} ??";
+    public string ReadingMeta => $"{PublishedAt}  ·  {ReadMinutes} 分钟";
 
     [JsonIgnore]
-    public string AccessibleTitle => $"{ContentLabel}?{Title}??? {SourceName}";
+    public string AccessibleTitle => $"{ContentLabel}，{Title}，来源 {SourceName}";
 
     [JsonIgnore]
-    public string TopicLabel => Topics.Count == 0 ? Category : string.Join(" ? ", Topics.Take(2));
+    public string TopicLabel => Topics.Count == 0 ? Category : string.Join(" · ", Topics.Take(2));
 
     [JsonIgnore]
     public string ContentLabel => string.IsNullOrWhiteSpace(ContentType)
         ? TopicLabel
-        : $"{ContentType} ? {TopicLabel}";
+        : $"{ContentType} · {TopicLabel}";
 
     [JsonIgnore]
     public string HeatLabel => HasDiscussionMetrics
-        ? $"???? {HotScore:0}"
-        : $"???? {HotScore:0}";
+        ? $"综合热度 {HotScore:0}"
+        : $"趋势参考 {HotScore:0}";
 
     [JsonIgnore]
     public string HeatDisclosure => HasDiscussionMetrics
-        ? $"?????????????????????????{HeatReason}"
-        : $"????????????????????????????????????????????{HeatReason}";
+        ? $"综合公开讨论、升温速度、来源质量、创新性和新鲜度。{HeatReason}"
+        : $"当前未取得稳定的跨平台讨论快照，本分数只根据可核查来源、创新性、技术相关性和新鲜度计算。{HeatReason}";
 
     private static Color ParseHex(string value)
     {
@@ -115,7 +115,7 @@ public sealed class PreferenceProfile
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
     public Dictionary<string, double> TopicWeights { get; set; } = [];
     public Dictionary<string, double> SourceWeights { get; set; } = [];
-    public string Depth { get; set; } = "????";
+    public string Depth { get; set; } = "入门解释";
     public int MaxItems { get; set; } = 12;
     public List<string> BlockedSources { get; set; } = [];
     public List<string> BlockedTopics { get; set; } = [];

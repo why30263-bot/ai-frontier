@@ -16,7 +16,7 @@ public partial class MainPageViewModel : ObservableObject
     private List<NewsItem> _filteredItems = [];
     private const int BatchSize = 10;
     private int _batchStart;
-    private string _activeCategory = "??";
+    private string _activeCategory = "全部";
     private bool _savedOnly;
     private bool _trendMode;
     private bool _recommendationMode;
@@ -32,7 +32,7 @@ public partial class MainPageViewModel : ObservableObject
     partial void OnSelectedItemChanged(NewsItem? value) => UpdateSelectedFeedbackState();
 
     [ObservableProperty]
-    public partial string EditionLabel { get; set; } = "?????????";
+    public partial string EditionLabel { get; set; } = "正在读取今日简报…";
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
@@ -44,25 +44,25 @@ public partial class MainPageViewModel : ObservableObject
     public partial bool IsFeedbackMessageOpen { get; set; }
 
     [ObservableProperty]
-    public partial string PreferenceSummary { get; set; } = "?????????????";
+    public partial string PreferenceSummary { get; set; } = "偏好会在你评分后逐步形成。";
 
     [ObservableProperty]
     public partial string WorkflowProfilePath { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string UpdateStatus { get; set; } = "???????";
+    public partial string UpdateStatus { get; set; } = "正在检查版本…";
 
     [ObservableProperty]
-    public partial string CodexStatus { get; set; } = "?????? Codex?";
+    public partial string CodexStatus { get; set; } = "正在检测本机 Codex…";
 
     [ObservableProperty]
     public partial string CodexWorkspacePath { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string BatchLabel { get; set; } = "?? 10 ?";
+    public partial string BatchLabel { get; set; } = "每批 10 条";
 
     [ObservableProperty]
-    public partial string ViewExplanation { get; set; } = "?????? AI ????";
+    public partial string ViewExplanation { get; set; } = "今天值得读的 AI 前沿进展";
 
     [ObservableProperty]
     public partial bool IsSelectedLiked { get; set; }
@@ -85,7 +85,7 @@ public partial class MainPageViewModel : ObservableObject
         var edition = await _newsService.LoadAsync();
         _allItems.Clear();
         _allItems.AddRange(edition.Items);
-        EditionLabel = $"{edition.EditionDate} ? {edition.Items.Count} ?";
+        EditionLabel = $"{edition.EditionDate} · {edition.Items.Count} 条";
         WorkflowProfilePath = _preferenceService.WorkflowProfilePath;
 
         _profile = await _preferenceService.LoadAsync();
@@ -142,7 +142,7 @@ public partial class MainPageViewModel : ObservableObject
     {
         if (SelectedItem is null)
         {
-            ShowFeedback("????????");
+            ShowFeedback("请先选择一条资讯");
             return;
         }
         var result = await _codexIntegrationService.AnalyzeAsync(SelectedItem);
@@ -158,17 +158,17 @@ public partial class MainPageViewModel : ObservableObject
 
     public void SetCategory(string category, bool savedOnly = false)
     {
-        _trendMode = category == "????";
-        _recommendationMode = category == "????";
-        _activeCategory = _trendMode || _recommendationMode ? "??" : category;
+        _trendMode = category == "三日热榜";
+        _recommendationMode = category == "为你推荐";
+        _activeCategory = _trendMode || _recommendationMode ? "全部" : category;
         _savedOnly = savedOnly;
         ViewExplanation = _trendMode
-            ? "???????? AI ??"
+            ? "近三天讨论较多的 AI 话题"
             : _recommendationMode
-                ? "???????????"
+                ? "根据你的阅读和反馈推荐"
                 : savedOnly
-                    ? "??????"
-                    : "?????? AI ????";
+                    ? "你收藏的资讯"
+                    : "今天值得读的 AI 前沿进展";
         ApplyFilter();
     }
 
@@ -186,12 +186,12 @@ public partial class MainPageViewModel : ObservableObject
     {
         if (_filteredItems.Count <= BatchSize)
         {
-            ShowFeedback($"????? {_filteredItems.Count} ???????");
+            ShowFeedback($"当前栏目共 {_filteredItems.Count} 条，没有下一批");
             return;
         }
         _batchStart = _batchStart + BatchSize >= _filteredItems.Count ? 0 : _batchStart + BatchSize;
         RenderBatch();
-        ShowFeedback("????");
+        ShowFeedback("已换一批");
     }
 
     public async Task RecordFeedbackAsync(string action, double? score = null)
@@ -208,7 +208,7 @@ public partial class MainPageViewModel : ObservableObject
         if (action == "bookmark")
         {
             var saved = _bookmarkedIds.Contains(SelectedItem.Id);
-            ShowFeedback(saved ? "?????????" : "?????");
+            ShowFeedback(saved ? "已收藏并保存在本机" : "已取消收藏");
             UpdateSelectedFeedbackState();
             ApplyFilter();
             return;
@@ -216,12 +216,12 @@ public partial class MainPageViewModel : ObservableObject
         UpdateSelectedFeedbackState();
         var message = action switch
         {
-            "like" => IsSelectedLiked ? "???" : "?????",
-            "dislike" => IsSelectedDisliked ? "????????" : "???????",
-            "less-topic" => IsSelectedLessTopic ? "???????" : "?????????",
-            "rating" => $"??? {score:0} ?",
-            "rating-clear" => "?????",
-            _ => "???"
+            "like" => IsSelectedLiked ? "已喜欢" : "已取消喜欢",
+            "dislike" => IsSelectedDisliked ? "已标记为不感兴趣" : "已取消不感兴趣",
+            "less-topic" => IsSelectedLessTopic ? "已减少此类内容" : "已取消减少此类内容",
+            "rating" => $"已评分 {score:0} 星",
+            "rating-clear" => "已清除评分",
+            _ => "已保存"
         };
         ShowFeedback(message);
     }
@@ -236,7 +236,7 @@ public partial class MainPageViewModel : ObservableObject
             }
             else
             {
-                ShowFeedback("????????");
+                ShowFeedback("无法打开原始网站");
             }
         }
     }
@@ -246,7 +246,7 @@ public partial class MainPageViewModel : ObservableObject
         var query = SearchText.Trim();
         var selectedId = SelectedItem?.Id;
         var filtered = _allItems.Where(item =>
-            (_activeCategory == "??" || MatchesChannel(item, _activeCategory)) &&
+            (_activeCategory == "全部" || MatchesChannel(item, _activeCategory)) &&
             (!_savedOnly || _bookmarkedIds.Contains(item.Id)) &&
             (!_trendMode || !DateTimeOffset.TryParse(item.PublishedAt, out var published) ||
                 published >= DateTimeOffset.Now.AddHours(-72)) &&
@@ -260,7 +260,7 @@ public partial class MainPageViewModel : ObservableObject
         {
             filteredList = filteredList.OrderByDescending(item => item.HotScore).ToList();
         }
-        else if (_activeCategory == "??" && !_savedOnly && query.Length == 0)
+        else if (_activeCategory == "全部" && !_savedOnly && query.Length == 0)
         {
             // The edition pipeline publishes complete, coverage-checked pages.
             // Personalization may reorder within a page but must not pull all
@@ -289,13 +289,13 @@ public partial class MainPageViewModel : ObservableObject
         }
         var pageCount = Math.Max(1, (int)Math.Ceiling(_filteredItems.Count / (double)BatchSize));
         var page = Math.Min(pageCount, _batchStart / BatchSize + 1);
-        BatchLabel = $"? {page}/{pageCount} ? ? {take} ?";
+        BatchLabel = $"第 {page}/{pageCount} 批 · {take} 条";
         SelectedItem = Items.FirstOrDefault(item => item.Id == selectedId) ?? Items.FirstOrDefault();
     }
 
     private List<NewsItem> BalanceForHome(List<NewsItem> items)
     {
-        if (_activeCategory != "??" || _savedOnly || SearchText.Trim().Length > 0)
+        if (_activeCategory != "全部" || _savedOnly || SearchText.Trim().Length > 0)
         {
             return items;
         }
@@ -304,11 +304,11 @@ public partial class MainPageViewModel : ObservableObject
         var front = new List<NewsItem>();
         var minimums = new (string Category, int Count)[]
         {
-            ("???", 2),
+            ("大模型", 2),
             ("Agent", 2),
-            ("????", 2),
-            ("????", 2),
-            ("????", 2)
+            ("重要研究", 2),
+            ("开源项目", 2),
+            ("产业动态", 2)
         };
         for (var round = 0; round < minimums.Max(rule => rule.Count); round++)
         {
@@ -352,11 +352,11 @@ public partial class MainPageViewModel : ObservableObject
     {
         var contentTypeWeight = item.ContentType switch
         {
-            "??" => 1.00,
-            "????" => 0.95,
-            "????" => 0.90,
-            "Agent??" => 0.88,
-            "????" => 0.68,
+            "论文" => 1.00,
+            "模型发布" => 0.95,
+            "开源项目" => 0.90,
+            "Agent产品" => 0.88,
+            "产业事件" => 0.68,
             _ => 0.60
         };
         var freshness = item.FreshnessScore > 0
@@ -441,6 +441,6 @@ public partial class MainPageViewModel : ObservableObject
             .OrderByDescending(pair => pair.Value)
             .Take(3)
             .Select(pair => pair.Key);
-        return $"?????{string.Join("?", topics)} ? ?????{profile.Depth}";
+        return $"当前优先：{string.Join("、", topics)} · 阅读深度：{profile.Depth}";
     }
 }

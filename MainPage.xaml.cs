@@ -48,7 +48,7 @@ public sealed partial class MainPage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.FeedbackMessage = $"???????{ex.Message}";
+            ViewModel.FeedbackMessage = $"读取新闻失败：{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
             ViewModel.EditionLabel = ViewModel.FeedbackMessage;
             var logRoot = Path.Combine(
@@ -73,7 +73,7 @@ public sealed partial class MainPage : Page
             NewsList.SelectedItem = ViewModel.SelectedItem;
             if (showMessage)
             {
-                ViewModel.FeedbackMessage = "???";
+                ViewModel.FeedbackMessage = "已刷新";
                 ViewModel.IsFeedbackMessageOpen = true;
             }
         }
@@ -91,7 +91,7 @@ public sealed partial class MainPage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.FeedbackMessage = $"?????{ex.Message}";
+            ViewModel.FeedbackMessage = $"刷新失败：{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
         }
     }
@@ -218,7 +218,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        var preferenceSelected = tag == "??";
+        var preferenceSelected = tag == "偏好";
         _isPreferenceVisible = preferenceSelected;
         UpdateResponsiveLayout(ActualWidth);
         if (preferenceSelected)
@@ -226,7 +226,7 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        ViewModel.SetCategory(tag == "??" ? "??" : tag, tag == "??");
+        ViewModel.SetCategory(tag == "收藏" ? "全部" : tag, tag == "收藏");
         ResetReadingPosition();
         _compactDetailVisible = false;
         UpdateResponsiveLayout(ActualWidth);
@@ -262,7 +262,7 @@ public sealed partial class MainPage : Page
         }
         catch (Exception exception)
         {
-            ViewModel.FeedbackMessage = $"?? Codex ???{exception.Message}";
+            ViewModel.FeedbackMessage = $"接入 Codex 失败：{exception.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
         }
         finally
@@ -280,7 +280,7 @@ public sealed partial class MainPage : Page
         }
         catch (Exception exception)
         {
-            ViewModel.FeedbackMessage = $"?? Codex ?????{exception.Message}";
+            ViewModel.FeedbackMessage = $"打开 Codex 分析失败：{exception.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
         }
         finally
@@ -331,21 +331,21 @@ public sealed partial class MainPage : Page
 
         var choices = new ComboBox
         {
-            Header = "???????",
+            Header = "这次怎么处理？",
             HorizontalAlignment = HorizontalAlignment.Stretch,
             SelectedIndex = 0,
             ItemsSource = new[]
             {
-                "????????????",
-                "?????????",
-                $"????????? {update.LatestVersion}?",
-                "???????"
+                "立即更新（只更新这一次）",
+                "接受并开启自动更新",
+                $"本版本不需要（跳过 {update.LatestVersion}）",
+                "不要再提示更新"
             }
         };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock
         {
-            Text = $"?????{update.CurrentVersion}\n?????{update.LatestVersion}\n???????? GitHub Releases???????? SHA-256?",
+            Text = $"当前版本：{update.CurrentVersion}\n最新版本：{update.LatestVersion}\n更新来自项目固定 GitHub Releases，并在安装前校验 SHA-256。",
             TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(choices);
@@ -353,10 +353,10 @@ public sealed partial class MainPage : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "?? AI Frontier ???",
+            Title = "发现 AI Frontier 新版本",
             Content = content,
-            PrimaryButtonText = "??",
-            CloseButtonText = "??",
+            PrimaryButtonText = "确认",
+            CloseButtonText = "稍后",
             DefaultButton = ContentDialogButton.Primary
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)

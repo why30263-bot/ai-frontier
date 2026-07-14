@@ -32,7 +32,7 @@ public sealed class PreferenceProfile
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
     public Dictionary<string, double> TopicWeights { get; set; } = [];
     public Dictionary<string, double> SourceWeights { get; set; } = [];
-    public string Depth { get; set; } = "????";
+    public string Depth { get; set; } = "入门解释";
     public string PromptHint { get; set; } = string.Empty;
     public List<string> BlockedSources { get; set; } = [];
     public List<string> BlockedTopics { get; set; } = [];

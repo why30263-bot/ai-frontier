@@ -22,7 +22,7 @@ public static class BoundedProcessRunner
         {
             if (!process.Start())
             {
-                return new(-1, string.Empty, "???????", false, false);
+                return new(-1, string.Empty, "进程未能启动。", false, false);
             }
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -45,7 +45,7 @@ public static class BoundedProcessRunner
             return new(
                 process.HasExited ? process.ExitCode : -2,
                 await ReadCompletedAsync(outputTask),
-                $"?????? {timeout.TotalSeconds:0} ??????",
+                $"进程运行超过 {timeout.TotalSeconds:0} 秒，已终止。",
                 true,
                 true);
         }

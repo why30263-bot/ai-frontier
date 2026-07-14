@@ -18,17 +18,17 @@ void SetField(object instance, string name, object value) =>
         ?? throw new InvalidOperationException($"Missing field {name}"))
     .SetValue(instance, value);
 
-NewsItem Item(int index, string category = "???") => new()
+NewsItem Item(int index, string category = "大模型") => new()
 {
     Id = $"item-{index:00}",
     Category = category,
-    ContentType = category == "Agent" ? "Agent??" : "????",
+    ContentType = category == "Agent" ? "Agent产品" : "模型发布",
     Topics = [category],
-    Title = $"??????{index}",
-    Summary = "?????????????????????",
+    Title = $"中文测试资讯{index}",
+    Summary = "这是一段用于验证批次和排序行为的中文摘要。",
     Tags = [category],
     PublishedAt = "2026-07-14",
-    SourceName = "????",
+    SourceName = "官方公告",
     SourceUrl = $"https://example.com/{index}",
     TechnicalRelevanceScore = 0.8,
     InnovationScore = 0.7,
@@ -44,17 +44,17 @@ render.Invoke(vm, [null]);
 var batches = new List<string[]> { vm.Items.Select(item => item.Id).ToArray() };
 vm.NextBatch(); batches.Add(vm.Items.Select(item => item.Id).ToArray());
 var noOverlap = !batches[0].Intersect(batches[1]).Any();
-if (noOverlap) Pass("???????????20 ?????? 10 + 10?");
-else Fail("??????????? ID");
+if (noOverlap) Pass("换一批在回卷前不重复（20 条测试池覆盖 10 + 10）");
+else Fail("换一批在回卷前出现重复 ID");
 if (batches[0].Length == 10 && batches[1].Length == 10)
-    Pass("??????? 10 ?");
+    Pass("每一批固定显示 10 条");
 else
-    Fail($"?????????????? {string.Join("/", batches.Select(batch => batch.Length))}");
+    Fail($"固定批次契约失败，实际批次为 {string.Join("/", batches.Select(batch => batch.Length))}");
 vm.NextBatch();
 if (vm.Items.Select(item => item.Id).SequenceEqual(batches[0]))
-    Pass("??????????????");
+    Pass("读完数据池后明确回卷到第一批");
 else
-    Fail("??????????????");
+    Fail("数据池末尾后的回卷行为不确定");
 
 var coverageVm = new MainPageViewModel();
 var allItemsField = typeof(MainPageViewModel).GetField("_allItems", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -63,13 +63,13 @@ for (var index = 0; index < 20; index++)
 {
     var slot = index % 10;
     var item = Item(index);
-    item.ContentType = slot == 0 ? "????" : slot is 1 or 2 ? "??" : "????";
+    item.ContentType = slot == 0 ? "开源项目" : slot is 1 or 2 ? "论文" : "产业事件";
     item.Topics = slot switch
     {
-        0 => ["???", "Agent", "????"],
-        1 => ["???", "????"],
-        2 => ["Agent", "????"],
-        _ => ["????"]
+        0 => ["大模型", "Agent", "开源项目"],
+        1 => ["大模型", "重要研究"],
+        2 => ["Agent", "重要研究"],
+        _ => ["产业动态"]
     };
     allItems.Add(item);
 }
@@ -79,37 +79,37 @@ coverageVm.NextBatch();
 coverageBatches.Add(coverageVm.Items.ToArray());
 var pagesPreserved = coverageBatches.All(batch =>
     batch.Length == 10 &&
-    batch.Count(item => item.Topics.Contains("???")) >= 2 &&
+    batch.Count(item => item.Topics.Contains("大模型")) >= 2 &&
     batch.Count(item => item.Topics.Contains("Agent")) >= 2 &&
-    batch.Any(item => item.ContentType == "??") &&
-    batch.Any(item => item.ContentType == "????"));
-if (pagesPreserved) Pass("?????????????????????Agent????????");
-else Fail("?????????????????");
+    batch.Any(item => item.ContentType == "论文") &&
+    batch.Any(item => item.ContentType == "开源项目"));
+if (pagesPreserved) Pass("个性化只在批内重排，不破坏任一批的大模型、Agent、论文和开源覆盖");
+else Fail("首页重排破坏了发布时的逐批覆盖契约");
 
 // 2) Verify the actual ranking implementation and its effective weights.
 var profile = new PreferenceProfile
 {
     ExplicitFeedbackCount = 8,
-    TopicWeights = new() { ["???"] = 2.0, ["Agent"] = 0.2 },
-    SourceWeights = new() { ["????"] = 1.0 }
+    TopicWeights = new() { ["大模型"] = 2.0, ["Agent"] = 0.2 },
+    SourceWeights = new() { ["其他来源"] = 1.0 }
 };
 SetField(vm, "_profile", profile);
 var rank = typeof(MainPageViewModel).GetMethod("RankForUser", BindingFlags.Instance | BindingFlags.NonPublic)!;
-var ranked = (List<NewsItem>)rank.Invoke(vm, [new List<NewsItem> { Item(0, "Agent"), Item(1, "???") }, 0.20d])!;
+var ranked = (List<NewsItem>)rank.Invoke(vm, [new List<NewsItem> { Item(0, "Agent"), Item(1, "大模型") }, 0.20d])!;
 if (ranked.Select(item => item.Id).Distinct().Count() == 2)
-    Pass("????????????????????");
+    Pass("生产排序函数可执行，且没有丢失或复制条目");
 else
-    Fail("???????????????");
+    Fail("生产排序函数造成条目丢失或重复");
 
 var vmSource = File.ReadAllText(Path.Combine(repoRoot, "ViewModels", "MainPageViewModel.cs"));
 if (vmSource.Contains("const double explorationWeight = 0.10;") &&
     vmSource.Contains("var importanceWeight = 1d - learnedStrength - explorationWeight;") &&
     vmSource.Contains("RankForUser(filteredList, _recommendationMode ? 0.30 : 0.20)"))
 {
-    Pass("???? 8 ???????? 70% ??? + 20% ?? + 10% ??");
-    Pass("?????? 60% ??? + 30% ?? + 10% ??");
+    Pass("今日流在 8 次显式反馈后形成 70% 重要性 + 20% 偏好 + 10% 探索");
+    Pass("为你推荐使用 60% 重要性 + 30% 偏好 + 10% 探索");
 }
-else Fail("????????? 70/20/10 ??");
+else Fail("无法从生产实现确认 70/20/10 权重");
 
 // 3) Execute production PreferenceService against an isolated temporary profile.
 var tempRoot = Path.Combine(Path.GetTempPath(), "AIFrontier-reader-v2-tests", Guid.NewGuid().ToString("N"));
@@ -122,28 +122,28 @@ var like1 = await preferenceService.RecordAsync(feedbackItem, "like");
 var like2 = await preferenceService.RecordAsync(feedbackItem, "like");
 if (like1.ArticlePreferences[feedbackItem.Id].Reaction == "like" &&
     like2.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
-    Pass("????????????????????");
-else Fail("???????");
+    Pass("喜欢状态可再次点击撤销，偏好权重同步回退");
+else Fail("喜欢状态不可逆");
 
 var dislike1 = await preferenceService.RecordAsync(feedbackItem, "dislike");
 var dislike2 = await preferenceService.RecordAsync(feedbackItem, "dislike");
 if (dislike1.ArticlePreferences[feedbackItem.Id].Reaction == "dislike" &&
     dislike2.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
-    Pass("?????????????");
-else Fail("?????????");
+    Pass("不感兴趣状态可再次点击撤销");
+else Fail("不感兴趣状态不可逆");
 
 var bookmark1 = await preferenceService.RecordAsync(feedbackItem, "bookmark");
 var bookmark2 = await preferenceService.RecordAsync(feedbackItem, "bookmark");
 if (bookmark1.BookmarkedIds.Contains(feedbackItem.Id) && !bookmark2.BookmarkedIds.Contains(feedbackItem.Id))
-    Pass("????????????????????");
-else Fail("???????????????");
+    Pass("收藏状态可再次点击撤销，收藏列表同步更新");
+else Fail("收藏状态不可逆或收藏列表不同步");
 
 var rating = await preferenceService.RecordAsync(feedbackItem, "rating", 4);
 var clearAttempt = await preferenceService.RecordAsync(feedbackItem, "rating-clear");
 if (rating.ArticlePreferences[feedbackItem.Id].Rating == 4 && clearAttempt.ArticlePreferences[feedbackItem.Id].Rating is null)
-    Pass("???? UI ???? rating-clear ??");
+    Pass("评分可按 UI 契约通过 rating-clear 清除");
 else
-    Fail($"rating-clear ??????????? {clearAttempt.ArticlePreferences[feedbackItem.Id].Rating}");
+    Fail($"rating-clear 没有清除评分，当前值为 {clearAttempt.ArticlePreferences[feedbackItem.Id].Rating}");
 
 // 4) Static UI wiring and structured Chinese reader checks.
 var xamlPath = Path.Combine(repoRoot, "MainPage.xaml");
@@ -154,21 +154,21 @@ var toggles = xaml.Descendants(ns + "ToggleButton")
     .Where(element => (string?)element.Attribute("Click") == "FeedbackButton_Click")
     .ToList();
 if (toggles.Count == 4 && codeBehind.Contains("sender is FrameworkElement { Tag: string action }"))
-    Pass("???? ToggleButton ? FrameworkElement ???????");
-else Fail("???????????????");
+    Pass("四个可逆 ToggleButton 与 FrameworkElement 点击处理器兼容");
+else Fail("反馈控件类型与点击处理器不兼容");
 
 if (codeBehind.Contains("sender.Value > 0 ? \"rating\" : \"rating-clear\"") &&
     codeBehind.Contains("sender.Value > 0 ? sender.Value : null"))
-    Pass("RatingControl ? Value=0 ???? rating-clear??? rating(0)");
-else Fail("RatingControl ????? UI ???????");
+    Pass("RatingControl 的 Value=0 已映射为 rating-clear，而非 rating(0)");
+else Fail("RatingControl 清除评分的 UI 契约未正确接线");
 
 var sectionControl = xaml.Descendants(ns + "ItemsControl")
     .FirstOrDefault(element => ((string?)element.Attribute("ItemsSource"))?.Contains("SelectedItem.BriefSections") == true);
 var hasSectionTitle = xaml.Descendants(ns + "TextBlock").Any(element => (string?)element.Attribute("Text") == "{x:Bind Title}");
 var hasSectionBody = xaml.Descendants(ns + "TextBlock").Any(element => (string?)element.Attribute("Text") == "{x:Bind Body}");
 if (sectionControl is not null && hasSectionTitle && hasSectionBody)
-    Pass("???? BriefSections ????????????????");
-else Fail("?????????????????");
+    Pass("详情页按 BriefSections 动态渲染标题与正文，保留资讯层级");
+else Fail("详情页没有完整绑定结构化标题与正文");
 
 var newsPath = Path.Combine(repoRoot, "Data", "news.json");
 using var newsDocument = JsonDocument.Parse(await File.ReadAllTextAsync(newsPath));
@@ -180,9 +180,9 @@ var validV2Items = items.Count(item =>
     item.TryGetProperty("topics", out var topics) && topics.ValueKind == JsonValueKind.Array && topics.GetArrayLength() > 0 &&
     item.TryGetProperty("briefSections", out var sections) && sections.ValueKind == JsonValueKind.Array && sections.GetArrayLength() is >= 3 and <= 5);
 if (schemaVersion >= 2 && items.Count >= 20 && items.Count % 10 == 0 && validV2Items == items.Count)
-    Pass("???? news.json ????????????");
+    Pass("当前内置 news.json 可直接驱动中文结构化详情");
 else
-    Fail($"???? news.json ???? v2?schema={schemaVersion}???={items.Count}??????={validV2Items}");
+    Fail($"当前内置 news.json 尚未达到 v2：schema={schemaVersion}，总数={items.Count}，结构化条目={validV2Items}");
 
 Directory.Delete(tempRoot, true);
 Console.WriteLine($"\nRESULT pass={passes.Count} warn={warnings.Count} fail={failures.Count}");

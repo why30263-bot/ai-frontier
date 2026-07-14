@@ -138,7 +138,7 @@ public sealed class PreferenceService
         if (source.Contains("arxiv") || source.Contains("doi.org") || source.Contains("aclanthology") ||
             source.Contains("openreview") || source.Contains("neurips") || source.Contains("icml") || source.Contains("iclr"))
         {
-            return "????";
+            return "论文原文";
         }
         if (source.Contains("github.com") || source.Contains("github trending"))
         {
@@ -146,20 +146,20 @@ public sealed class PreferenceService
         }
         if (source.Contains("twitter.com") || source.Contains("x.com/") || source.Contains("reddit") || source.Contains("hacker news"))
         {
-            return "????";
+            return "技术社区";
         }
         if (source.Contains("techcrunch") || source.Contains("venturebeat") || source.Contains("the verge") ||
-            source.Contains("wired") || source.Contains("mit technology review") || source.Contains("???") || source.Contains("????"))
+            source.Contains("wired") || source.Contains("mit technology review") || source.Contains("量子位") || source.Contains("机器之心"))
         {
-            return "????";
+            return "专业媒体";
         }
         if (source.Contains("openai") || source.Contains("anthropic") || source.Contains("deepmind") ||
             source.Contains("google") || source.Contains("microsoft") || source.Contains("meta") ||
-            source.Contains("huggingface") || source.Contains("??"))
+            source.Contains("huggingface") || source.Contains("官方"))
         {
-            return "????";
+            return "官方公告";
         }
-        return "????";
+        return "其他来源";
     }
 
     private static void ApplyAction(ArticlePreference state, string action, double? score)
@@ -211,6 +211,6 @@ public sealed class PreferenceService
             .Take(3)
             .Select(pair => $"{pair.Key}:{pair.Value:0.00}");
 
-        return $"??????[{string.Join(", ", preferredTopics)}]???[{string.Join(", ", preferredSources)}]?????[{profile.Depth}]????????????????????????????";
+        return $"排序偏好主题[{string.Join(", ", preferredTopics)}]；来源[{string.Join(", ", preferredSources)}]；解释深度[{profile.Depth}]。偏好只影响排序与篇幅，不得降低事实核查和原始来源门槛。";
     }
 }

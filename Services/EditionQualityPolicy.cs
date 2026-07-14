@@ -14,15 +14,15 @@ public sealed class EditionQualityPolicy
     public const int MinimumVisibleItems = BatchSize * 2;
 
     private static readonly HashSet<string> ContentTypes =
-        ["??", "????", "????", "Agent??", "????"];
+        ["论文", "开源项目", "模型发布", "Agent产品", "产业事件"];
 
     private static readonly HashSet<string> AllowedTopics =
-        ["???", "Agent", "????", "????", "????"];
+        ["大模型", "Agent", "重要研究", "开源项目", "产业动态"];
 
     private static readonly string[] BannedReaderHeadings =
     [
-        "????", "?????????", "????", "??????",
-        "????", "???", "????", "?????"
+        "完整报道", "发布信息与适用范围", "趋势参考", "为什么值得看",
+        "报道边界", "来源链", "筛选说明", "真实性声明"
     ];
 
     private readonly Func<DateTimeOffset> _now;
@@ -62,7 +62,7 @@ public sealed class EditionQualityPolicy
         }
 
         // A main-feed page is a publishing unit, not an accidental slice of a pool.
-        // Validate every page so ????? can never degrade into a weak remainder.
+        // Validate every page so “换一批” can never degrade into a weak remainder.
         return edition.Items
             .Chunk(BatchSize)
             .All(HasRequiredBatchCoverage);
@@ -123,10 +123,10 @@ public sealed class EditionQualityPolicy
     {
         var items = batch.ToList();
         return items.Count == BatchSize &&
-            items.Count(item => item.Topics.Contains("???")) >= 2 &&
+            items.Count(item => item.Topics.Contains("大模型")) >= 2 &&
             items.Count(item => item.Topics.Contains("Agent")) >= 2 &&
-            items.Any(item => item.ContentType == "??") &&
-            items.Any(item => item.ContentType == "????");
+            items.Any(item => item.ContentType == "论文") &&
+            items.Any(item => item.ContentType == "开源项目");
     }
 
     private static bool HasChineseLead(string? value)
@@ -153,7 +153,7 @@ public sealed class EditionQualityPolicy
         }
 
         // Product names are allowed, but a standalone English sentence/paragraph is not.
-        foreach (var segment in value.Split(['?', '?', '?', '.', '!', '?', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var segment in value.Split(['。', '！', '？', '.', '!', '?', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries))
         {
             var segmentHan = segment.Count(character => character is >= '\u3400' and <= '\u9fff');
             var latinLetters = segment.Count(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z');

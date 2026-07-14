@@ -10,8 +10,8 @@ Run from the repository root:
 $env:NUGET_PACKAGES='D:\DevTools\nuget-packages'
 & 'D:\DevTools\dotnet\dotnet.exe' run `
   --project Tests\AIFrontier.ReaderV2.IntegrationTests.csproj `
-  -p:BaseIntermediateOutputPath='D:\??\.build\reader-v2-tests\obj\' `
-  -p:BaseOutputPath='D:\??\.build\reader-v2-tests\bin\' `
+  -p:BaseIntermediateOutputPath='D:\讯飞\.build\reader-v2-tests\obj\' `
+  -p:BaseOutputPath='D:\讯飞\.build\reader-v2-tests\bin\' `
   -p:RestoreIgnoreFailedSources=true `
   -p:NuGetAudit=false
 ```

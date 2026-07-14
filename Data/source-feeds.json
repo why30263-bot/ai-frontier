@@ -10,40 +10,40 @@
   "freshHours": 72,
   "supplementDays": 14,
   "categoryMinimums": {
-    "???": 5,
+    "大模型": 5,
     "Agent": 5,
-    "????": 5,
-    "????": 6,
-    "????": 3
+    "开源项目": 5,
+    "重要研究": 6,
+    "产业动态": 3
   },
   "githubDiscovery": {
     "enabled": true,
     "queries": [
-      { "query": "topic:ai-agent stars:>100", "topics": ["Agent", "????"], "minimumStars": 100, "maxItems": 4 },
-      { "query": "topic:llm-agent stars:>100", "topics": ["Agent", "???", "????"], "minimumStars": 100, "maxItems": 4 },
-      { "query": "topic:large-language-models stars:>500", "topics": ["???", "????"], "minimumStars": 500, "maxItems": 4 },
-      { "query": "topic:artificial-intelligence stars:>500", "topics": ["????"], "minimumStars": 500, "maxItems": 4 },
-      { "query": "org:openai", "topics": ["???", "????"], "minimumStars": 50, "maxItems": 2 },
-      { "query": "org:anthropics", "topics": ["Agent", "????"], "minimumStars": 50, "maxItems": 2 },
-      { "query": "org:google-deepmind", "topics": ["????", "???", "????"], "minimumStars": 50, "maxItems": 2 },
-      { "query": "org:QwenLM", "topics": ["???", "????"], "minimumStars": 50, "maxItems": 2 },
-      { "query": "org:deepseek-ai", "topics": ["???", "????"], "minimumStars": 50, "maxItems": 2 }
+      { "query": "topic:ai-agent stars:>100", "topics": ["Agent", "开源项目"], "minimumStars": 100, "maxItems": 4 },
+      { "query": "topic:llm-agent stars:>100", "topics": ["Agent", "大模型", "开源项目"], "minimumStars": 100, "maxItems": 4 },
+      { "query": "topic:large-language-models stars:>500", "topics": ["大模型", "开源项目"], "minimumStars": 500, "maxItems": 4 },
+      { "query": "topic:artificial-intelligence stars:>500", "topics": ["开源项目"], "minimumStars": 500, "maxItems": 4 },
+      { "query": "org:openai", "topics": ["大模型", "开源项目"], "minimumStars": 50, "maxItems": 2 },
+      { "query": "org:anthropics", "topics": ["Agent", "开源项目"], "minimumStars": 50, "maxItems": 2 },
+      { "query": "org:google-deepmind", "topics": ["重要研究", "大模型", "开源项目"], "minimumStars": 50, "maxItems": 2 },
+      { "query": "org:QwenLM", "topics": ["大模型", "开源项目"], "minimumStars": 50, "maxItems": 2 },
+      { "query": "org:deepseek-ai", "topics": ["大模型", "开源项目"], "minimumStars": 50, "maxItems": 2 }
     ]
   },
   "feeds": [
-    { "name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "contentType": "????", "topics": ["???", "Agent"], "brand": "OpenAI", "brandColor": "#111827", "logoAsset": "Assets/Brands/openai.svg", "trust": "????" },
-    { "name": "Google DeepMind", "url": "https://deepmind.google/blog/rss.xml", "contentType": "????", "topics": ["???", "????"], "brand": "DeepMind", "brandColor": "#0B57D0", "logoAsset": "", "trust": "????" },
-    { "name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "contentType": "??", "topics": ["????"], "brand": "Microsoft Research", "brandColor": "#0078D4", "logoAsset": "", "trust": "????" },
-    { "name": "Apple Machine Learning Research", "url": "https://machinelearning.apple.com/rss.xml", "contentType": "??", "topics": ["????"], "brand": "Apple ML", "brandColor": "#1D1D1F", "logoAsset": "", "trust": "????" },
-    { "name": "NVIDIA Developer AI", "url": "https://developer.nvidia.com/blog/feed/", "contentType": "????", "topics": ["???"], "brand": "NVIDIA", "brandColor": "#76B900", "logoAsset": "", "trust": "??????" },
-    { "name": "Qwen Blog", "url": "https://qwenlm.github.io/blog/index.xml", "contentType": "????", "topics": ["???", "Agent"], "brand": "Qwen", "brandColor": "#615CED", "logoAsset": "", "trust": "????" },
-    { "name": "GitHub AI & ML", "url": "https://github.blog/ai-and-ml/feed/", "contentType": "????", "topics": ["????", "Agent"], "brand": "GitHub", "brandColor": "#24292F", "logoAsset": "Assets/Brands/github.svg", "trust": "????" },
-    { "name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "contentType": "????", "topics": ["???", "????"], "brand": "Hugging Face", "brandColor": "#FFB000", "logoAsset": "", "trust": "????" },
-    { "name": "Microsoft AI", "url": "https://news.microsoft.com/source/topics/ai/feed/", "contentType": "????", "topics": ["????", "???"], "brand": "Microsoft AI", "brandColor": "#0078D4", "logoAsset": "", "trust": "????" },
-    { "name": "arXiv AI", "url": "https://export.arxiv.org/api/query?search_query=cat:cs.AI%20OR%20cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", "contentType": "??", "contentTypeLocked": true, "topics": ["????", "???", "Agent"], "brand": "arXiv", "brandColor": "#B31B1B", "logoAsset": "Assets/Brands/arxiv.svg", "trust": "????" },
-    { "name": "ACL Anthology", "url": "https://aclanthology.org/papers/index.xml", "contentType": "??", "contentTypeLocked": true, "topics": ["????", "???", "Agent"], "brand": "ACL", "brandColor": "#155E75", "logoAsset": "Assets/Brands/arxiv.svg", "trust": "????" },
-    { "name": "TechCrunch AI", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "contentType": "????", "topics": ["????"], "brand": "TechCrunch", "brandColor": "#0A9E01", "logoAsset": "", "trust": "????" },
-    { "name": "The Verge AI", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "contentType": "????", "topics": ["????"], "brand": "The Verge", "brandColor": "#E3007F", "logoAsset": "", "trust": "????" },
-    { "name": "WIRED AI", "url": "https://www.wired.com/feed/tag/ai/latest/rss", "contentType": "????", "topics": ["????"], "brand": "WIRED", "brandColor": "#111111", "logoAsset": "", "trust": "????" }
+    { "name": "OpenAI News", "url": "https://openai.com/news/rss.xml", "contentType": "模型发布", "topics": ["大模型", "Agent"], "brand": "OpenAI", "brandColor": "#111827", "logoAsset": "Assets/Brands/openai.svg", "trust": "官方公告" },
+    { "name": "Google DeepMind", "url": "https://deepmind.google/blog/rss.xml", "contentType": "产业事件", "topics": ["大模型", "重要研究"], "brand": "DeepMind", "brandColor": "#0B57D0", "logoAsset": "", "trust": "官方公告" },
+    { "name": "Microsoft Research", "url": "https://www.microsoft.com/en-us/research/feed/", "contentType": "论文", "topics": ["重要研究"], "brand": "Microsoft Research", "brandColor": "#0078D4", "logoAsset": "", "trust": "官方研究" },
+    { "name": "Apple Machine Learning Research", "url": "https://machinelearning.apple.com/rss.xml", "contentType": "论文", "topics": ["重要研究"], "brand": "Apple ML", "brandColor": "#1D1D1F", "logoAsset": "", "trust": "官方研究" },
+    { "name": "NVIDIA Developer AI", "url": "https://developer.nvidia.com/blog/feed/", "contentType": "产业事件", "topics": ["大模型"], "brand": "NVIDIA", "brandColor": "#76B900", "logoAsset": "", "trust": "官方技术博客" },
+    { "name": "Qwen Blog", "url": "https://qwenlm.github.io/blog/index.xml", "contentType": "模型发布", "topics": ["大模型", "Agent"], "brand": "Qwen", "brandColor": "#615CED", "logoAsset": "", "trust": "官方公告" },
+    { "name": "GitHub AI & ML", "url": "https://github.blog/ai-and-ml/feed/", "contentType": "产业事件", "topics": ["开源项目", "Agent"], "brand": "GitHub", "brandColor": "#24292F", "logoAsset": "Assets/Brands/github.svg", "trust": "官方博客" },
+    { "name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "contentType": "产业事件", "topics": ["大模型", "开源项目"], "brand": "Hugging Face", "brandColor": "#FFB000", "logoAsset": "", "trust": "官方博客" },
+    { "name": "Microsoft AI", "url": "https://news.microsoft.com/source/topics/ai/feed/", "contentType": "产业事件", "topics": ["产业动态", "大模型"], "brand": "Microsoft AI", "brandColor": "#0078D4", "logoAsset": "", "trust": "官方公告" },
+    { "name": "arXiv AI", "url": "https://export.arxiv.org/api/query?search_query=cat:cs.AI%20OR%20cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20", "contentType": "论文", "contentTypeLocked": true, "topics": ["重要研究", "大模型", "Agent"], "brand": "arXiv", "brandColor": "#B31B1B", "logoAsset": "Assets/Brands/arxiv.svg", "trust": "论文原文" },
+    { "name": "ACL Anthology", "url": "https://aclanthology.org/papers/index.xml", "contentType": "论文", "contentTypeLocked": true, "topics": ["重要研究", "大模型", "Agent"], "brand": "ACL", "brandColor": "#155E75", "logoAsset": "Assets/Brands/arxiv.svg", "trust": "论文原文" },
+    { "name": "TechCrunch AI", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "contentType": "产业事件", "topics": ["产业动态"], "brand": "TechCrunch", "brandColor": "#0A9E01", "logoAsset": "", "trust": "专业媒体" },
+    { "name": "The Verge AI", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "contentType": "产业事件", "topics": ["产业动态"], "brand": "The Verge", "brandColor": "#E3007F", "logoAsset": "", "trust": "专业媒体" },
+    { "name": "WIRED AI", "url": "https://www.wired.com/feed/tag/ai/latest/rss", "contentType": "产业事件", "topics": ["产业动态"], "brand": "WIRED", "brandColor": "#111111", "logoAsset": "", "trust": "专业媒体" }
   ]
 }

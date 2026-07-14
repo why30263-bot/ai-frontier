@@ -23,35 +23,35 @@
         IsPaneToggleButtonVisible="True"
         OpenPaneLength="210"
         PaneDisplayMode="Left"
-        PaneTitle="??"
+        PaneTitle="栏目"
         SelectionChanged="Navigation_SelectionChanged">
 
         <NavigationView.MenuItems>
-            <NavigationViewItem Content="??" Tag="??" IsSelected="True">
+            <NavigationViewItem Content="今日" Tag="全部" IsSelected="True">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="????" Tag="????">
+            <NavigationViewItem Content="为你推荐" Tag="为你推荐">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D4;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="???" Tag="???">
+            <NavigationViewItem Content="大模型" Tag="大模型">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem Content="Agent" Tag="Agent">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE99A;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="????" Tag="????">
+            <NavigationViewItem Content="开源项目" Tag="开源项目">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE943;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="????" Tag="????">
+            <NavigationViewItem Content="重要研究" Tag="重要研究">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Content="??" Tag="??">
+            <NavigationViewItem Content="收藏" Tag="收藏">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE735;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
-            <NavigationViewItem Content="??" Tag="??">
+            <NavigationViewItem Content="设置" Tag="偏好">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>
@@ -80,16 +80,16 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="4">
-                            <TextBlock Text="AI ??" Style="{StaticResource TitleTextBlockStyle}" />
+                            <TextBlock Text="AI 前沿" Style="{StaticResource TitleTextBlockStyle}" />
                             <TextBlock x:Name="EditionText" Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel x:Name="HeaderCommands" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock x:Name="BatchText" Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Button Content="???" Click="NextBatchButton_Click" AutomationProperties.Name="?????" />
-                            <Button x:Name="RefreshButton" Click="RefreshButton_Click" AutomationProperties.Name="????">
+                            <Button Content="换一批" Click="NextBatchButton_Click" AutomationProperties.Name="换一批资讯" />
+                            <Button x:Name="RefreshButton" Click="RefreshButton_Click" AutomationProperties.Name="刷新新闻">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ProgressRing x:Name="RefreshProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
-                                    <TextBlock Text="??" />
+                                    <TextBlock Text="刷新" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -98,10 +98,10 @@
                     <AutoSuggestBox
                         Grid.Row="1"
                         Margin="4,0,4,14"
-                        PlaceholderText="??????????"
+                        PlaceholderText="搜索标题、摘要或标签"
                         QueryIcon="Find"
                         Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                        AutomationProperties.Name="????" />
+                        AutomationProperties.Name="搜索新闻" />
 
                     <Grid Grid.Row="2">
                         <ListView
@@ -123,7 +123,7 @@
                                     <Setter Property="Padding" Value="0" />
                                     <Setter Property="Margin" Value="0,0,0,12" />
                                     <Setter Property="CornerRadius" Value="16" />
-                                    <Setter Property="AutomationProperties.HelpText" Value="????????" />
+                                    <Setter Property="AutomationProperties.HelpText" Value="点击打开新闻详情" />
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
@@ -155,8 +155,8 @@
 
                         <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="Collapsed">
                             <FontIcon Glyph="&#xE721;" FontSize="36" />
-                            <TextBlock Text="?????????" Style="{StaticResource SubtitleTextBlockStyle}" />
-                            <TextBlock Text="??????????" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="没有符合条件的新闻" Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="换个栏目或关键词试试" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -171,7 +171,7 @@
                     <Grid>
                         <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center">
                             <StackPanel MaxWidth="800" HorizontalAlignment="Center" Padding="24" Spacing="16">
-                                <Button x:Name="CompactBackButton" Content="? ?????" Click="CompactBackButton_Click" Visibility="Collapsed" HorizontalAlignment="Left" />
+                                <Button x:Name="CompactBackButton" Content="← 返回新闻流" Click="CompactBackButton_Click" Visibility="Collapsed" HorizontalAlignment="Left" />
 
                                 <TextBlock Text="{Binding SelectedItem.ContentLabel}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level1" />
@@ -198,25 +198,25 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Button x:Name="AnalyzeWithCodexButton" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="????????? Codex ????">
+                                    <Button x:Name="AnalyzeWithCodexButton" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读">
                                         <StackPanel Orientation="Horizontal" Spacing="7">
                                             <ProgressRing x:Name="CodexProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
-                                            <TextBlock Text="?? Codex ????" />
+                                            <TextBlock Text="使用 Codex 深度分析" />
                                         </StackPanel>
                                     </Button>
-                                    <Button x:Name="OpenSourceButton" Grid.Column="1" Content="?????? ?" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="?????????????????" />
+                                    <Button x:Name="OpenSourceButton" Grid.Column="1" Content="打开原始网站 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开原始来源" />
                                 </Grid>
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="??????????????" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                    <RatingControl x:Name="PreferenceRating" MaxRating="5" ValueChanged="PreferenceRating_ValueChanged" AutomationProperties.Name="??????" />
+                                    <TextBlock Text="读完后，这条内容对你有用吗？" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <RatingControl x:Name="PreferenceRating" MaxRating="5" ValueChanged="PreferenceRating_ValueChanged" AutomationProperties.Name="新闻喜好程度" />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <ToggleButton Content="??" Tag="like" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedLiked, Mode=OneWay}" AutomationProperties.Name="??????" />
-                                        <ToggleButton Content="????" Tag="dislike" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedDisliked, Mode=OneWay}" AutomationProperties.Name="????" />
-                                        <ToggleButton Content="??" Tag="bookmark" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedBookmarked, Mode=OneWay}" AutomationProperties.Name="????" />
+                                        <ToggleButton Content="喜欢" Tag="like" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedLiked, Mode=OneWay}" AutomationProperties.Name="喜欢这条新闻" />
+                                        <ToggleButton Content="不感兴趣" Tag="dislike" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedDisliked, Mode=OneWay}" AutomationProperties.Name="不感兴趣" />
+                                        <ToggleButton Content="收藏" Tag="bookmark" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedBookmarked, Mode=OneWay}" AutomationProperties.Name="收藏新闻" />
                                     </StackPanel>
-                                    <ToggleButton Content="??????" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" IsChecked="{x:Bind ViewModel.IsSelectedLessTopic, Mode=OneWay}" AutomationProperties.Name="?????????" />
+                                    <ToggleButton Content="减少此类内容" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" IsChecked="{x:Bind ViewModel.IsSelectedLessTopic, Mode=OneWay}" AutomationProperties.Name="减少或恢复此类内容" />
                                 </StackPanel>
 
                                 <InfoBar
@@ -240,31 +240,31 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel MaxWidth="760" HorizontalAlignment="Center" Spacing="18" Padding="0,0,12,20">
                         <FontIcon Glyph="&#xE713;" FontSize="40" Foreground="{ThemeResource AccentFillColorDefaultBrush}" />
-                        <TextBlock Text="??" Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" />
+                        <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" TextAlignment="Center" />
 
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <TextBlock Text="?? Codex ????" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="本机 Codex 辅助阅读" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.CodexStatus, Mode=OneWay}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="ConnectCodexButton" Click="ConnectCodexButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <ProgressRing x:Name="ConnectCodexProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
-                                    <TextBlock Text="???? Codex" />
+                                    <TextBlock Text="接入本机 Codex" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
 
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                        <TextBlock Text="????" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="版本更新" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="CheckUpdatesButton" Click="CheckUpdatesButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
                                     <ProgressRing x:Name="UpdateProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
-                                    <TextBlock Text="??????" />
+                                    <TextBlock Text="立即检查更新" />
                                 </StackPanel>
                             </Button>
-                            <Button Content="??????" Click="ResetUpdatePromptsButton_Click" />
+                            <Button Content="恢复更新提醒" Click="ResetUpdatePromptsButton_Click" />
                         </StackPanel>
                     </StackPanel>
                     </ScrollViewer>

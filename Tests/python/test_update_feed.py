@@ -28,8 +28,8 @@ SPEC.loader.exec_module(update_feed)
 def chinese_text(seed: str, length: int) -> str:
     """Return natural-enough Chinese fixture copy with a predictable length."""
     sentence = (
-        f"{seed}???????????????????????????????????????"
-        "??????????????????????????"
+        f"{seed}团队完成了可复现的技术改进，并公开说明实现方法、关键结果、适用条件与已知限制，"
+        "让普通读者能够直接理解这项工作的能力边界和实际贡献。"
     )
     return (sentence * ((length // len(sentence)) + 2))[:length]
 
@@ -37,41 +37,41 @@ def chinese_text(seed: str, length: int) -> str:
 def report_item(
     item_id: str,
     *,
-    content_type: str = "????",
+    content_type: str = "产业事件",
     topics: list[str] | None = None,
 ) -> dict:
-    topics = list(topics or ["????"])
+    topics = list(topics or ["产业动态"])
     return {
         "id": item_id,
         "category": update_feed.compatibility_category(content_type, topics),
         "contentType": content_type,
         "contentTypeLocked": False,
         "topics": topics,
-        "brand": "????",
+        "brand": "测试来源",
         "brandColor": "#123456",
         "logoAsset": "",
-        "title": "????????????????",
-        "summary": chinese_text("??", 90),
-        "sourceMaterial": chinese_text("??", 500),
+        "title": "新系统显著提升复杂任务执行稳定性",
+        "summary": chinese_text("摘要", 90),
+        "sourceMaterial": chinese_text("材料", 500),
         "publishedAt": "2026-07-14",
-        "sourceName": "????",
+        "sourceName": "测试来源",
         "sourceUrl": f"https://example.test/{item_id}",
         "readMinutes": 4,
-        "confidence": "????",
-        "whyItMatters": chinese_text("??", 55),
-        "details": [chinese_text("??", 55)],
+        "confidence": "官方来源",
+        "whyItMatters": chinese_text("影响", 55),
+        "details": [chinese_text("事实", 55)],
         "tags": [*topics, content_type],
-        "sourceTrail": [f"????: https://example.test/{item_id}"],
-        "keyFacts": [chinese_text("????", 55) for _ in range(3)],
-        "context": chinese_text("??", 55),
-        "beginnerExplainer": chinese_text("??", 55),
-        "impact": chinese_text("??", 55),
-        "limitations": chinese_text("??", 55),
-        "whatToWatch": chinese_text("??", 55),
+        "sourceTrail": [f"测试来源: https://example.test/{item_id}"],
+        "keyFacts": [chinese_text("关键事实", 55) for _ in range(3)],
+        "context": chinese_text("背景", 55),
+        "beginnerExplainer": chinese_text("解释", 55),
+        "impact": chinese_text("影响", 55),
+        "limitations": chinese_text("限制", 55),
+        "whatToWatch": chinese_text("后续", 55),
         "briefSections": [
-            {"title": "????", "body": chinese_text("??", 125)},
-            {"title": "????", "body": chinese_text("??", 115)},
-            {"title": "?????", "body": chinese_text("??", 115)},
+            {"title": "直接成果", "body": chinese_text("成果", 125)},
+            {"title": "实现方法", "body": chinese_text("方法", 115)},
+            {"title": "结果与边界", "body": chinese_text("结果", 115)},
         ],
         "fullBrief": "",
         "technicalRelevanceScore": 0.82,
@@ -104,33 +104,33 @@ class ChineseReportGateTests(unittest.TestCase):
         )
         self.assertFalse(update_feed.is_chinese_report(item))
         self.assertTrue(
-            any("??" in issue for issue in update_feed.chinese_report_issues(item))
+            any("英文" in issue for issue in update_feed.chinese_report_issues(item))
         )
 
     def test_rejects_short_or_meta_process_copy(self) -> None:
         item = report_item("gate-meta")
-        item["summary"] = "??"
-        item["briefSections"][0]["body"] += "???????"
+        item["summary"] = "太短"
+        item["briefSections"][0]["body"] += "建议打开原文。"
         issues = update_feed.chinese_report_issues(item)
         self.assertTrue(any("50" in issue for issue in issues))
-        self.assertTrue(any("???" in issue for issue in issues))
+        self.assertTrue(any("元话语" in issue for issue in issues))
 
 
 class WriterNormalizationTests(unittest.TestCase):
     def test_normalizes_mixed_english_and_chinese_nested_section_keys(self) -> None:
-        item = report_item("mixed-sections", content_type="??", topics=["????"])
+        item = report_item("mixed-sections", content_type="论文", topics=["重要研究"])
         item["contentTypeLocked"] = True
         mixed_sections = [
-            {"title": "????", "body": chinese_text("???", 125)},
-            {"????": "????", "??": chinese_text("???", 115)},
-            {"??": "????", "??": chinese_text("???", 115)},
+            {"title": "直接成果", "body": chinese_text("第一段", 125)},
+            {"段落标题": "研究方法", "内容": chinese_text("第二段", 115)},
+            {"标题": "实验结果", "正文": chinese_text("第三段", 115)},
         ]
         writer_row = {
             "id": item["id"],
-            "contentType": "Agent??",
-            "topics": ["????", "Agent"],
-            "title": "?????????????????",
-            "summary": chinese_text("??", 90),
+            "contentType": "Agent产品",
+            "topics": ["重要研究", "Agent"],
+            "title": "研究团队提出更可靠的智能体评测方法",
+            "summary": chinese_text("摘要", 90),
             "briefSections": mixed_sections,
             "technicalRelevanceScore": 0.9,
             "innovationScore": 0.8,
@@ -153,13 +153,13 @@ class WriterNormalizationTests(unittest.TestCase):
             enriched, count = update_feed.enrich_with_ai([item])
 
         self.assertEqual(1, count)
-        self.assertEqual("??", enriched[0]["contentType"], "locked source type must win")
+        self.assertEqual("论文", enriched[0]["contentType"], "locked source type must win")
         self.assertEqual(
             ["title", "body"],
             list(enriched[0]["briefSections"][1].keys()),
         )
-        self.assertEqual("????", enriched[0]["briefSections"][1]["title"])
-        self.assertEqual("????", enriched[0]["briefSections"][2]["title"])
+        self.assertEqual("研究方法", enriched[0]["briefSections"][1]["title"])
+        self.assertEqual("实验结果", enriched[0]["briefSections"][2]["title"])
 
 
 class TopicEvidenceTests(unittest.TestCase):
@@ -169,32 +169,32 @@ class TopicEvidenceTests(unittest.TestCase):
 
     def test_configured_topic_hints_cannot_create_unsupported_topics(self) -> None:
         topics = update_feed.infer_topics(
-            "??????????",
-            "???????????????",
-            "????",
-            candidates=["???", "Agent", "????"],
+            "企业发布季度技术路线",
+            "平台改进了部署流程和服务管理。",
+            "产业事件",
+            candidates=["大模型", "Agent", "重要研究"],
         )
-        self.assertEqual(["????"], topics)
+        self.assertEqual(["产业动态"], topics)
 
     def test_explicit_source_evidence_adds_cross_topic(self) -> None:
         topics = update_feed.infer_topics(
-            "???? multi-agent ??",
+            "工具支持 multi-agent 协作",
             "The framework adds tool use for an agentic workflow.",
-            "????",
+            "开源项目",
             candidates=[],
         )
-        self.assertIn("????", topics)
+        self.assertIn("开源项目", topics)
         self.assertIn("Agent", topics)
 
 
 class GitHubReleaseMaterialTests(unittest.TestCase):
     def test_release_notes_remain_primary_and_readme_is_only_context(self) -> None:
-        item = report_item("release-material", content_type="????", topics=["????"])
+        item = report_item("release-material", content_type="开源项目", topics=["开源项目"])
         item.update(
             {
                 "sourceUrl": "https://github.com/example/project/releases/tag/v2.0.0",
                 "defaultBranch": "main",
-                "sourceMaterial": "Release notes?????????????????????",
+                "sourceMaterial": "Release notes：新增结构化工具调用、恢复机制与错误报告。",
             }
         )
         requested_urls: list[str] = []
@@ -202,7 +202,7 @@ class GitHubReleaseMaterialTests(unittest.TestCase):
         def fake_fetch(url: str, timeout: int = 20) -> bytes:
             del timeout
             requested_urls.append(url)
-            return ("# Project\n" + chinese_text("????", 700)).encode("utf-8")
+            return ("# Project\n" + chinese_text("项目说明", 700)).encode("utf-8")
 
         with mock.patch.object(update_feed, "fetch", side_effect=fake_fetch):
             material = update_feed.fetch_source_material(item)
@@ -211,24 +211,24 @@ class GitHubReleaseMaterialTests(unittest.TestCase):
             ["https://raw.githubusercontent.com/example/project/main/README.md"],
             requested_urls,
         )
-        self.assertTrue(material.startswith("Release notes??????????"))
-        self.assertIn("?????README?", material)
+        self.assertTrue(material.startswith("Release notes：新增结构化工具调用"))
+        self.assertIn("项目说明（README）", material)
         self.assertLess(material.index("Release notes"), material.index("README"))
 
 
 class DraftPublicationAndCoverageTests(unittest.TestCase):
     def _coverage_items(self) -> list[dict]:
         definitions = [
-            ("paper-model-1", "??", ["????", "???"], "????????????????"),
-            ("paper-agent-1", "??", ["????", "Agent"], "???????????????"),
-            ("project-model-1", "????", ["????", "???"], "???????????????"),
-            ("project-agent-1", "????", ["????", "Agent"], "???????????????"),
-            ("model-1", "????", ["???"], "???????????????"),
-            ("agent-1", "Agent??", ["Agent"], "???????????????"),
-            ("industry-1", "????", ["????"], "???????????????"),
-            ("industry-2", "????", ["????"], "???????????????"),
-            ("industry-3", "????", ["????"], "???????????????"),
-            ("industry-4", "????", ["????"], "??????????????"),
+            ("paper-model-1", "论文", ["重要研究", "大模型"], "新方法降低长文本推理中的记忆误差"),
+            ("paper-agent-1", "论文", ["重要研究", "Agent"], "评测揭示多智能体协作的失效条件"),
+            ("project-model-1", "开源项目", ["开源项目", "大模型"], "推理框架加入跨设备并行调度能力"),
+            ("project-agent-1", "开源项目", ["开源项目", "Agent"], "智能体工具库实现任务中断后恢复"),
+            ("model-1", "模型发布", ["大模型"], "多模态模型提升复杂图表理解精度"),
+            ("agent-1", "Agent产品", ["Agent"], "桌面智能体新增可控操作确认机制"),
+            ("industry-1", "产业事件", ["产业动态"], "云平台开放模型部署成本分析工具"),
+            ("industry-2", "产业事件", ["产业动态"], "芯片厂商公布新一代互连技术路线"),
+            ("industry-3", "产业事件", ["产业动态"], "数据服务商推出训练语料治理方案"),
+            ("industry-4", "产业事件", ["产业动态"], "安全机构建立生成内容检测标准"),
         ]
         items = []
         for batch in range(2):
@@ -334,7 +334,7 @@ class DraftPublicationAndCoverageTests(unittest.TestCase):
 
     def test_failed_coverage_preserves_last_known_good_edition(self) -> None:
         items = [
-            report_item(f"model-only-{index}", content_type="????", topics=["???"])
+            report_item(f"model-only-{index}", content_type="模型发布", topics=["大模型"])
             for index in range(20)
         ]
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -350,7 +350,7 @@ class DraftPublicationAndCoverageTests(unittest.TestCase):
 
     def test_ci_mode_preserves_last_known_good_but_returns_failure(self) -> None:
         items = [
-            report_item(f"model-only-ci-{index}", content_type="????", topics=["???"])
+            report_item(f"model-only-ci-{index}", content_type="模型发布", topics=["大模型"])
             for index in range(20)
         ]
         with tempfile.TemporaryDirectory() as temporary_directory:

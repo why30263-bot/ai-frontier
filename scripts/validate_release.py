@@ -15,15 +15,15 @@ from typing import Any
 
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 HAN_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
-CONTENT_TYPES = {"??", "????", "????", "Agent??", "????"}
-ALLOWED_TOPICS = {"???", "Agent", "????", "????", "????"}
+CONTENT_TYPES = {"论文", "开源项目", "模型发布", "Agent产品", "产业事件"}
+ALLOWED_TOPICS = {"大模型", "Agent", "重要研究", "开源项目", "产业动态"}
 ENGLISH_SENTENCE_PATTERN = re.compile(
     r"\b(?:[A-Za-z][A-Za-z0-9+.#/'-]*\s+){7,}[A-Za-z][A-Za-z0-9+.#/'-]*[.!?]?"
 )
 PROCESS_PHRASES = (
-    "??????", "????", "????", "??????", "????", "???????",
-    "????", "???", "????", "???", "????", "?????", "????",
-    "????", "??????????", "??????", "????",
+    "原始信息来自", "当前来源", "来源摘要", "建议打开原文", "回到原文", "以官方文档为准",
+    "自动采集", "采集器", "筛选逻辑", "置信度", "人工核查", "跨来源验证", "报道边界",
+    "无法替代", "未披露的内容不作补写", "需要结合原文", "需要核对",
 )
 
 
@@ -35,10 +35,10 @@ def load_json(path: Path, errors: list[str]) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        errors.append(f"???????? {path}: {exc}")
+        errors.append(f"无法读取资讯数据 {path}: {exc}")
         return {}
     if not isinstance(value, dict):
-        errors.append("?????????? JSON ??")
+        errors.append("资讯数据根节点必须是 JSON 对象")
         return {}
     return value
 
@@ -47,7 +47,7 @@ def project_version(path: Path, errors: list[str]) -> str:
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError) as exc:
-        errors.append(f"???????? {path}: {exc}")
+        errors.append(f"无法读取项目文件 {path}: {exc}")
         return ""
     versions = [
         (element.text or "").strip()
@@ -55,7 +55,7 @@ def project_version(path: Path, errors: list[str]) -> str:
         if element.tag.rsplit("}", 1)[-1] == "Version" and (element.text or "").strip()
     ]
     if len(set(versions)) != 1:
-        errors.append(f"AIFrontier.csproj ???????????? Version???? {versions or '?'}")
+        errors.append(f"AIFrontier.csproj 必须且只能声明一个一致的 Version，当前为 {versions or '空'}")
         return ""
     return versions[0]
 
@@ -63,46 +63,46 @@ def project_version(path: Path, errors: list[str]) -> str:
 def validate_item(item: Any, index: int, errors: list[str]) -> None:
     label = f"items[{index}]"
     if not isinstance(item, dict):
-        errors.append(f"{label} ?????")
+        errors.append(f"{label} 必须是对象")
         return
 
     item_id = item.get("id")
     if not isinstance(item_id, str) or not item_id.strip():
-        errors.append(f"{label}.id ????")
+        errors.append(f"{label}.id 不能为空")
 
     content_type = item.get("contentType")
     if content_type not in CONTENT_TYPES:
-        errors.append(f"{label}.contentType ??: {content_type!r}")
+        errors.append(f"{label}.contentType 无效: {content_type!r}")
 
     topics = item.get("topics")
     if not isinstance(topics, list) or not topics or not all(isinstance(topic, str) and topic.strip() for topic in topics):
-        errors.append(f"{label}.topics ??????????")
+        errors.append(f"{label}.topics 必须是非空字符串数组")
     elif any(topic not in ALLOWED_TOPICS for topic in topics):
-        errors.append(f"{label}.topics ???????: {topics!r}")
+        errors.append(f"{label}.topics 含不支持的主题: {topics!r}")
 
     title = item.get("title")
     summary = item.get("summary")
     if not isinstance(title, str) or chinese_character_count(title) < 2:
-        errors.append(f"{label}.title ???? 2 ?????")
+        errors.append(f"{label}.title 至少需要 2 个中文字符")
     elif chinese_character_count(title[:16]) < 4:
-        errors.append(f"{label}.title ?????????")
+        errors.append(f"{label}.title 必须先给出中文结论")
     if not isinstance(summary, str) or chinese_character_count(summary) < 50:
-        errors.append(f"{label}.summary ???? 50 ?????")
+        errors.append(f"{label}.summary 至少需要 50 个中文字符")
 
     source_url = item.get("sourceUrl")
     if not isinstance(source_url, str) or not source_url.startswith(("https://", "http://")):
-        errors.append(f"{label}.sourceUrl ??? HTTP(S) ??")
+        errors.append(f"{label}.sourceUrl 必须是 HTTP(S) 链接")
     if not isinstance(item.get("publishedAt"), str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["publishedAt"]):
-        errors.append(f"{label}.publishedAt ??? YYYY-MM-DD")
+        errors.append(f"{label}.publishedAt 必须是 YYYY-MM-DD")
     for score_name, minimum in (("technicalRelevanceScore", 0.55), ("innovationScore", 0.35)):
         score = item.get(score_name)
         if not isinstance(score, (int, float)) or isinstance(score, bool) or not minimum <= float(score) <= 1:
-            errors.append(f"{label}.{score_name} ??? {minimum} ? 1 ??")
+            errors.append(f"{label}.{score_name} 必须在 {minimum} 到 1 之间")
 
     sections = item.get("briefSections")
     if not isinstance(sections, list) or not 3 <= len(sections) <= 5:
-        length = len(sections) if isinstance(sections, list) else "???"
-        errors.append(f"{label}.briefSections ??? 3-5 ????? {length}")
+        length = len(sections) if isinstance(sections, list) else "非数组"
+        errors.append(f"{label}.briefSections 必须有 3-5 段，当前为 {length}")
         return
 
     total_chinese = 0
@@ -110,25 +110,25 @@ def validate_item(item: Any, index: int, errors: list[str]) -> None:
     for section_index, section in enumerate(sections):
         section_label = f"{label}.briefSections[{section_index}]"
         if not isinstance(section, dict):
-            errors.append(f"{section_label} ?????")
+            errors.append(f"{section_label} 必须是对象")
             continue
         title = section.get("title")
         body = section.get("body")
         if not isinstance(title, str) or chinese_character_count(title) < 2:
-            errors.append(f"{section_label}.title ???? 2 ?????")
+            errors.append(f"{section_label}.title 至少需要 2 个中文字符")
         if not isinstance(body, str) or not body.strip():
-            errors.append(f"{section_label}.body ????")
+            errors.append(f"{section_label}.body 不能为空")
             continue
         total_chinese += chinese_character_count(body)
         reader_text.extend((str(title or ""), body))
         if chinese_character_count(body) < 45:
-            errors.append(f"{section_label}.body ???? 45 ?????")
+            errors.append(f"{section_label}.body 至少需要 45 个中文字符")
 
     if sections and isinstance(sections[0], dict) and chinese_character_count(sections[0].get("body")) < 60:
-        errors.append(f"{label}.briefSections[0].body ???? 60 ?????")
+        errors.append(f"{label}.briefSections[0].body 至少需要 60 个中文字符")
 
     if total_chinese < 275:
-        errors.append(f"{label} ?????? 275 ????????? {total_chinese}")
+        errors.append(f"{label} 正文至少需要 275 个中文字符，当前为 {total_chinese}")
 
     for field in ("keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch"):
         value = item.get(field, [])
@@ -137,25 +137,25 @@ def validate_item(item: Any, index: int, errors: list[str]) -> None:
         else:
             reader_text.append(str(value or ""))
     if any(ENGLISH_SENTENCE_PATTERN.search(text) for text in reader_text):
-        errors.append(f"{label} ??????????????")
+        errors.append(f"{label} 的读者可见字段含完整英文句子")
     leaked = sorted({phrase for text in reader_text for phrase in PROCESS_PHRASES if phrase in text})
     if leaked:
-        errors.append(f"{label} ?????????????: {'?'.join(leaked)}")
+        errors.append(f"{label} 的读者可见字段含编辑元话语: {'、'.join(leaked)}")
 
 
 def validate_content(document: dict[str, Any], errors: list[str], maximum_age_hours: int | None) -> None:
     if document.get("schemaVersion") != 2:
-        errors.append(f"schemaVersion ?????? 2???? {document.get('schemaVersion')!r}")
+        errors.append(f"schemaVersion 必须严格等于 2，当前为 {document.get('schemaVersion')!r}")
         return
 
     items = document.get("items")
     if not isinstance(items, list):
-        errors.append("items ?????")
+        errors.append("items 必须是数组")
         return
     if len(items) < 20:
-        errors.append(f"?????? 20 ??????? {len(items)}")
+        errors.append(f"每期至少需要 20 条资讯，当前为 {len(items)}")
     if len(items) % 10:
-        errors.append(f"??????? 10 ???????? {len(items)}")
+        errors.append(f"资讯总数必须是 10 的整倍数，当前为 {len(items)}")
 
     generated_at = document.get("generatedAt")
     try:
@@ -164,44 +164,44 @@ def validate_content(document: dict[str, Any], errors: list[str], maximum_age_ho
             raise ValueError("missing timezone")
         now = dt.datetime.now(dt.timezone.utc)
         if generated.astimezone(dt.timezone.utc) > now + dt.timedelta(minutes=5):
-            errors.append("generatedAt ?????????? 5 ??")
+            errors.append("generatedAt 不得晚于当前时间超过 5 分钟")
         if maximum_age_hours is not None and now - generated.astimezone(dt.timezone.utc) > dt.timedelta(hours=maximum_age_hours):
-            errors.append(f"???????? {maximum_age_hours} ??")
+            errors.append(f"资讯版本不得早于 {maximum_age_hours} 小时")
     except (TypeError, ValueError):
-        errors.append("generatedAt ??????? ISO 8601 ??")
+        errors.append("generatedAt 必须是带时区的 ISO 8601 时间")
 
     edition_date = document.get("editionDate")
     try:
         dt.date.fromisoformat(str(edition_date))
     except ValueError:
-        errors.append("editionDate ??? YYYY-MM-DD")
+        errors.append("editionDate 必须是 YYYY-MM-DD")
     window_hours = document.get("windowHours")
     if not isinstance(window_hours, int) or not 24 <= window_hours <= 336:
-        errors.append("windowHours ??? 24 ? 336 ??")
+        errors.append("windowHours 必须在 24 到 336 之间")
 
     for index, item in enumerate(items):
         validate_item(item, index, errors)
 
     ids = [item.get("id") for item in items if isinstance(item, dict) and item.get("id")]
     if len(ids) != len(set(ids)):
-        errors.append("items ????? id")
+        errors.append("items 中存在重复 id")
     source_urls = [item.get("sourceUrl") for item in items if isinstance(item, dict) and item.get("sourceUrl")]
     if len(source_urls) != len(set(source_urls)):
-        errors.append("items ????? sourceUrl")
+        errors.append("items 中存在重复 sourceUrl")
 
     for start in range(0, len(items), 10):
         batch = items[start:start + 10]
         if len(batch) != 10:
             continue
         coverage = {
-            "???": sum(isinstance(item, dict) and "???" in item.get("topics", []) for item in batch) >= 2,
+            "大模型": sum(isinstance(item, dict) and "大模型" in item.get("topics", []) for item in batch) >= 2,
             "Agent": sum(isinstance(item, dict) and "Agent" in item.get("topics", []) for item in batch) >= 2,
-            "??": any(isinstance(item, dict) and item.get("contentType") == "??" for item in batch),
-            "????": any(isinstance(item, dict) and item.get("contentType") == "????" for item in batch),
+            "论文": any(isinstance(item, dict) and item.get("contentType") == "论文" for item in batch),
+            "开源项目": any(isinstance(item, dict) and item.get("contentType") == "开源项目" for item in batch),
         }
         for category, present in coverage.items():
             if not present:
-                errors.append(f"? {start // 10 + 1} ???{category}")
+                errors.append(f"第 {start // 10 + 1} 批缺少{category}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -220,10 +220,10 @@ def main() -> int:
     declared_version = project_version(args.project, errors)
     expected_version = args.version.strip() or declared_version
     if not SEMVER_PATTERN.fullmatch(expected_version):
-        errors.append(f"??????? MAJOR.MINOR.PATCH???? {expected_version!r}")
+        errors.append(f"发布版本必须为 MAJOR.MINOR.PATCH，当前为 {expected_version!r}")
     if declared_version and expected_version != declared_version:
         errors.append(
-            f"??????????? {expected_version}?AIFrontier.csproj ?? {declared_version}"
+            f"版本不一致：工作流请求 {expected_version}，AIFrontier.csproj 声明 {declared_version}"
         )
 
     document = load_json(args.news, errors)

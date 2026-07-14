@@ -33,12 +33,12 @@ WRITER_BATCH_SIZE = 2
 REVIEW_BATCH_SIZE = 4
 SCHEMA_VERSION = 2
 PIPELINE_CONTRACT_VERSION = "2.2"
-CONTENT_TYPES = {"??", "????", "????", "Agent??", "????"}
-TOPIC_ORDER = ("???", "Agent", "????", "????", "????")
+CONTENT_TYPES = {"论文", "开源项目", "模型发布", "Agent产品", "产业事件"}
+TOPIC_ORDER = ("大模型", "Agent", "重要研究", "开源项目", "产业动态")
 BATCH_SIZE = 10
 MINIMUM_EDITION_ITEMS = 20
-CORE_DIMENSIONS = ("???", "Agent", "??", "????")
-CORE_DIMENSION_MINIMUMS = {"???": 2, "Agent": 2, "??": 1, "????": 1}
+CORE_DIMENSIONS = ("大模型", "Agent", "论文", "开源项目")
+CORE_DIMENSION_MINIMUMS = {"大模型": 2, "Agent": 2, "论文": 1, "开源项目": 1}
 OPEN_SOURCE_LICENSES = {
     "Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MPL-2.0",
     "GPL-2.0", "GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0", "GPL-3.0-only",
@@ -50,14 +50,14 @@ OPEN_SOURCE_LICENSES = {
 # These phrases describe the editorial machinery rather than the event. They must
 # never leak into reader-facing copy.
 PROCESS_PHRASES = (
-    "??????", "????", "????", "??????", "????", "???????",
-    "????", "???", "????", "???", "????", "?????", "????",
-    "????", "??????????", "??????", "????",
+    "原始信息来自", "当前来源", "来源摘要", "建议打开原文", "回到原文", "以官方文档为准",
+    "自动采集", "采集器", "筛选逻辑", "置信度", "人工核查", "跨来源验证", "报道边界",
+    "无法替代", "未披露的内容不作补写", "需要结合原文", "需要核对",
 )
 LOW_VALUE_TERMS = (
     "funding round", "raises $", "valuation", "celebrity", "singer", "influencer",
-    "??", "??", "??", "??", "??", "??", "??", "??", "??",
-    "successful people", "return to tech", "book excerpt", "??", "??", "???",
+    "融资", "估值", "明星", "歌手", "网红", "吐槽", "绯闻", "粉丝", "饭圈",
+    "successful people", "return to tech", "book excerpt", "木偶", "性感", "不性感",
 )
 
 
@@ -116,7 +116,7 @@ def fetch_source_material(item: dict) -> str:
                 decoded = fetch(readme_url, timeout=12).decode("utf-8", errors="ignore")
                 readme = clean_document_text(decoded)
                 if readme:
-                    return (fallback[:3500] + "\n\n?????README??\n" + readme[:6500])[:12000]
+                    return (fallback[:3500] + "\n\n项目说明（README）：\n" + readme[:6500])[:12000]
             except Exception:  # noqa: BLE001
                 return fallback[:12000]
         else:
@@ -173,19 +173,19 @@ def infer_topics(
     """Classify subject matter without changing the kind of source material."""
     text = f"{title} {description}".lower()
     groups = {
-        "Agent": ("agent", "agentic", "multi-agent", "tool use", "computer use", "???", "????", "???"),
-        "???": ("large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "qwen", "deepseek", "???", "????", "?????", "????"),
-        "????": ("paper", "research", "benchmark", "dataset", "arxiv", "??", "??", "??", "???", "??"),
-        "????": ("open source", "github", "repository", "sdk", "framework", "??", "??", "??"),
-        "????": ("launch", "release", "api", "product", "platform", "??", "??", "??", "??"),
+        "Agent": ("agent", "agentic", "multi-agent", "tool use", "computer use", "智能体", "代理系统", "工作流"),
+        "大模型": ("large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "qwen", "deepseek", "大模型", "基础模型", "多模态模型", "推理模型"),
+        "重要研究": ("paper", "research", "benchmark", "dataset", "arxiv", "论文", "研究", "基准", "数据集", "实验"),
+        "开源项目": ("open source", "github", "repository", "sdk", "framework", "开源", "仓库", "框架"),
+        "产业动态": ("launch", "release", "api", "product", "platform", "发布", "产品", "平台", "企业"),
     }
     intrinsic = {
-        "??": "????",
-        "????": "????",
-        "????": "???",
-        "Agent??": "Agent",
-        "????": "????",
-    }.get(content_type, "????")
+        "论文": "重要研究",
+        "开源项目": "开源项目",
+        "模型发布": "大模型",
+        "Agent产品": "Agent",
+        "产业事件": "产业动态",
+    }.get(content_type, "产业动态")
     topics = [intrinsic]
     topics.extend(topic for topic, terms in groups.items() if any(term in text for term in terms))
     # Configured topics are discovery hints only. They neither add a topic without
@@ -196,15 +196,15 @@ def infer_topics(
 
 def compatibility_category(content_type: str, topics: list[str]) -> str:
     """Keep schema-v1 clients usable while schema-v2 readers use both dimensions."""
-    if content_type == "??":
-        return "????"
-    if content_type == "????":
-        return "????"
-    if content_type == "????":
-        return "???"
-    if content_type == "Agent??":
+    if content_type == "论文":
+        return "重要研究"
+    if content_type == "开源项目":
+        return "开源项目"
+    if content_type == "模型发布":
+        return "大模型"
+    if content_type == "Agent产品":
         return "Agent"
-    return next((topic for topic in topics if topic in TOPIC_ORDER), "????")
+    return next((topic for topic in topics if topic in TOPIC_ORDER), "产业动态")
 
 
 def fallback_analysis(summary: str) -> dict:
@@ -244,10 +244,10 @@ def parse_feed(source: dict) -> list[dict]:
         if not title or not link.startswith("http"):
             continue
         date = parse_date(published)
-        summary = description[:260].rstrip() + ("?" if len(description) > 260 else "")
+        summary = description[:260].rstrip() + ("…" if len(description) > 260 else "")
         if not summary:
-            summary = "????????????????????????????"
-        content_type = source.get("contentType", "????")
+            summary = "由独立采集器从官方信息源发现，建议打开原文查看完整内容。"
+        content_type = source.get("contentType", "产业事件")
         if content_type not in CONTENT_TYPES:
             continue
         topics = infer_topics(title, description, content_type, source.get("topics", []))
@@ -269,10 +269,10 @@ def parse_feed(source: dict) -> list[dict]:
             "sourceName": source["name"],
             "sourceUrl": link,
             "readMinutes": max(2, min(8, len(description) // 350 + 2)),
-            "confidence": source.get("trust", "????"),
+            "confidence": source.get("trust", "官方来源"),
             "whyItMatters": "",
             "details": [summary],
-            "tags": [*topics, content_type, source["brand"], "????"],
+            "tags": [*topics, content_type, source["brand"], "自动采集"],
             "sourceTrail": [f"{source['name']}: {link}"],
             **analysis,
         }
@@ -287,7 +287,7 @@ def collect_github(config: dict) -> list[dict]:
     since = (dt.date.today() - dt.timedelta(days=int(config.get("supplementDays", 14)))).isoformat()
     query_specs = discovery.get("queries") or [{
         "query": discovery.get("query", "topic:artificial-intelligence stars:>500"),
-        "topics": ["????"],
+        "topics": ["开源项目"],
         "minimumStars": discovery.get("minimumStars", 500),
         "maxItems": discovery.get("maxItems", 4),
     }]
@@ -344,27 +344,27 @@ def collect_github(config: dict) -> list[dict]:
             release_notes = clean_text(release.get("body") or "")
             if len(release_notes) < 80:
                 continue
-            release_name = clean_text(release.get("name") or release.get("tag_name") or "???")
+            release_name = clean_text(release.get("name") or release.get("tag_name") or "新版本")
             title = f"{full_name} {release_name}"
             topics = infer_topics(
                 title,
                 f"{description} {release_notes}",
-                "????",
-                spec.get("topics", ["????"]),
+                "开源项目",
+                spec.get("topics", ["开源项目"]),
             )
-            category = compatibility_category("????", topics)
-            language = repository.get("language") or "???"
+            category = compatibility_category("开源项目", topics)
+            language = repository.get("language") or "未标注"
             summary = f"{description} {release_notes[:500]}"
             analysis = fallback_analysis(summary)
             analysis["keyFacts"] = [
-                f"???{release.get('tag_name', release_name)}??????{released_at[:10]}?",
-                f"??? {stars:,} ? Star??????{language}?????{license_name}?",
+                f"版本：{release.get('tag_name', release_name)}；发布时间：{released_at[:10]}。",
+                f"项目约 {stars:,} 个 Star；主要语言：{language}；许可证：{license_name}。",
                 release_notes,
             ]
             output.append({
                 "id": "github-" + hashlib.sha256(link.encode()).hexdigest()[:16],
                 "category": category,
-                "contentType": "????",
+                "contentType": "开源项目",
                 "contentTypeLocked": True,
                 "topics": topics,
                 "brand": "GitHub",
@@ -373,19 +373,19 @@ def collect_github(config: dict) -> list[dict]:
                 "title": title,
                 "summary": summary,
                 "sourceMaterial": (
-                    f"???{full_name}\n???{release_name}\n?????{released_at}\n"
-                    f"?????{description}\nRelease notes?{release_notes}\n"
-                    f"Star?{stars:,}??????{language}?????{license_name}?"
+                    f"项目：{full_name}\n版本：{release_name}\n发布时间：{released_at}\n"
+                    f"项目简介：{description}\nRelease notes：{release_notes}\n"
+                    f"Star：{stars:,}；主要语言：{language}；许可证：{license_name}。"
                 ),
                 "defaultBranch": repository.get("default_branch") or "main",
                 "publishedAt": released_at[:10],
                 "sourceName": "GitHub Release",
                 "sourceUrl": link,
                 "readMinutes": 4,
-                "confidence": "????",
+                "confidence": "项目仓库",
                 "whyItMatters": "",
                 "details": analysis["keyFacts"],
-                "tags": [*topics, "????", "GitHub", "????", "????"],
+                "tags": [*topics, "开源项目", "GitHub", "正式发布", "自动采集"],
                 "sourceTrail": [f"GitHub Release: {link}"],
                 **analysis,
             })
@@ -451,30 +451,30 @@ def chinese_report_issues(item: dict) -> list[str]:
     copy = reader_copy(item)
     issues: list[str] = []
     if item.get("contentType") not in CONTENT_TYPES:
-        issues.append("contentType??")
+        issues.append("contentType无效")
     if not isinstance(item.get("topics"), list) or not item.get("topics"):
-        issues.append("topics??")
+        issues.append("topics为空")
     if chinese_char_count(item.get("title")) < 2:
-        issues.append("??????")
+        issues.append("标题中文不足")
     if chinese_char_count(str(item.get("title", ""))[:16]) < 4:
-        issues.append("??????????")
+        issues.append("标题没有先给中文结论")
     if chinese_char_count(item.get("summary")) < 50:
-        issues.append("??????50?")
+        issues.append("摘要中文不足50字")
     if not 3 <= len(sections) <= 5:
-        issues.append("????3?5?")
+        issues.append("正文不是3至5段")
     if sum(chinese_char_count(section.get("body")) for section in sections) < 275:
-        issues.append("??????275?")
+        issues.append("正文中文不足275字")
     if not sections or chinese_char_count(sections[0].get("body")) < 60:
-        issues.append("??????60?")
+        issues.append("首段中文不足60字")
     if sections and not all(chinese_char_count(section.get("body")) >= 45 for section in sections):
-        issues.append("????45??????")
+        issues.append("存在不足45字的正文段落")
     if any(contains_english_sentence(value) for value in copy):
-        issues.append("?????????????")
+        issues.append("读者可见字段含完整英文句子")
     matched_process_phrases = sorted({phrase for value in copy for phrase in PROCESS_PHRASES if phrase in value})
     if matched_process_phrases:
-        issues.append("??????????:" + "?".join(matched_process_phrases))
+        issues.append("读者可见字段含元话语:" + "、".join(matched_process_phrases))
     if not source_entity_consistent(item):
-        issues.append("????????????????")
+        issues.append("标题或摘要改变了来源中的核心实体")
     return issues
 
 
@@ -549,7 +549,7 @@ def deduplicate_events(items: list[dict]) -> list[dict]:
 def diversify(collected: list[dict], maximum: int, per_source: int) -> list[dict]:
     buckets: dict[str, list[dict]] = {}
     for item in collected:
-        buckets.setdefault(item.get("sourceName", "????"), []).append(item)
+        buckets.setdefault(item.get("sourceName", "未知来源"), []).append(item)
     queues = [
         sorted(items, key=lambda item: item.get("publishedAt", ""), reverse=True)[:per_source]
         for items in buckets.values()
@@ -630,7 +630,7 @@ def merge(existing: list[dict], collected: list[dict], maximum: int, per_source:
     output: list[dict] = []
     urls: set[str] = set()
     titles: set[str] = set()
-    curated = [item for item in existing if "????" not in item.get("tags", [])]
+    curated = [item for item in existing if "自动采集" not in item.get("tags", [])]
     candidates = [*curated, *diversify(collected, maximum, per_source)]
     for item in candidates:
         url = item.get("sourceUrl", "")
@@ -663,13 +663,13 @@ def apply_freshness(
         missing = max(0, int(minimum) - sum(matches_coverage_dimension(item, category) for item in selected))
         additions = [item for item in supplements if matches_coverage_dimension(item, category) and item not in selected][:missing]
         for item in additions:
-            item["tags"] = [tag for tag in item.get("tags", []) if tag != "????"] + ["????"]
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
         selected.extend(additions)
     if len(selected) < target:
         for item in supplements:
             if item in selected:
                 continue
-            item["tags"] = [tag for tag in item.get("tags", []) if tag != "????"] + ["????"]
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
             selected.append(item)
             if len(selected) >= target:
                 break
@@ -712,17 +712,17 @@ def enrich_with_ai(
             for item in batch
         ]
         prompt = (
-            "??????????? AI ?????????????????????????????????????????????????????"
-            "??????????contentType??????????????Agent?????????topics?????Agent????????????????Agent??????Agent???contentTypeLocked?true?????????false?????????????????????"
-            "sourceTitle???????????????????????????????????????????Codex???ChatGPT??????????????????????"
-            "???????????????????????????????title?summary??????????????Star?????????"
-            "summary?70-140?????????????????????????????"
-            "briefSections???JSON??????????3-5????500-900????????275?????????????????60???????????45?????????????????????????????????????????????????????????????????????????"
-            "??????????????????????????????????????????????????Agent????????????????????????????????????????????????????????????????"
-            "???????????????????????????????????????????????????????????????????????????????"
-            "?????keyFacts(3-5?)?context?beginnerExplainer?impact?limitations?whatToWatch???????????????????????????????"
-            "???topics?contentTypeLocked?true?????contentType??false?????????????technicalRelevanceScore?innovationScore?0?1?????????????????????????????????????0.45?"
-            "???? JSON ??????????????????? \"briefSections\":[{\"title\":\"?????\",\"body\":\"????\"}]???????????????? {\"items\":[{\"id\":..., ...}]}?\n\n"
+            "你是面向普通读者的中文 AI 科技记者。所有标题、摘要和正文必须是自然中文，产品名、模型名和必要术语可保留英文，但不能复制完整英文句子。"
+            "只依据材料写事实。把contentType（论文、开源项目、模型发布、Agent产品、产业事件）与topics（大模型、Agent等主题）分开；绝不能因为论文讨论Agent就把论文改成Agent产品。contentTypeLocked为true时不得修改类型；为false时必须按本条事件而不是信息源名称修正类型。"
+            "sourceTitle中的产品名、模型名、项目名或论文方法名是实体锚点，标题或摘要必须保留正确实体，绝不能把Codex改写成ChatGPT、把公开仓库误写成开源项目，或自行替换主体。"
+            "读者第一眼只需要知道：它做到了什么、核心贡献或关键变化是什么。title和summary结论先行，不要用日期、来源、Star数或背景铺垫开头。"
+            "summary为70-140个中文字符，用一段话交代成果、贡献和关键依据，不复述标题。"
+            "briefSections必须是JSON数组，按信息量动态写3-5段，总计500-900个中文字符，少于275个中文字会被直接丢弃；首段正文至少60个中文字，每段正文至少45个中文字。第一段必须直接完整回答‘做到了什么’，其余段落从贡献、方法、关键结果、使用方式、适用对象、影响、具体限制中按材料选择，不能为凑模板重复。"
+            "论文优先说明研究问题、方法、实验结果和贡献；项目优先说明能做什么、关键机制、上手方式和成熟度；模型或Agent发布优先说明新增能力、实现路径、效果和限制；产业事件按结果、变化、影响组织。段落标题要具体，避免机械使用‘发布信息与适用范围’。"
+            "不得出现编辑流程、筛选逻辑、置信度、核查提醒、来源声明、‘建议查看原文’、‘以官方文档为准’等面向编辑的元话语；不得用‘值得关注’‘行业正在发展’等空话凑字。"
+            "另生成中文keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch；这些字段必须是事件内容，不得写工作流声明，且避免与正文重复。"
+            "可修正topics；contentTypeLocked为true时不得修改contentType，为false时可依据本条材料修正。再给technicalRelevanceScore和innovationScore（0到1）；娱乐、人物花边、纯营销、普通代码推送或只有融资信息的技术相关性必须低于0.45。"
+            "返回严格 JSON 对象，字段名必须保持英文；正文必须写成 \"briefSections\":[{\"title\":\"具体小标题\",\"body\":\"中文正文\"}]，不得改成中文字段名。整体格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
         payload = json.dumps({
@@ -731,7 +731,7 @@ def enrich_with_ai(
             "max_tokens": 8000,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": "?????????????? JSON?"},
+                {"role": "system", "content": "输出严谨、克制、可核查的中文 JSON。"},
                 {"role": "user", "content": prompt},
             ],
         }, ensure_ascii=False).encode("utf-8")
@@ -780,8 +780,8 @@ def enrich_with_ai(
                             for section in value:
                                 if not isinstance(section, dict):
                                     continue
-                                title = section.get("title") or section.get("????") or section.get("??")
-                                body = section.get("body") or section.get("??") or section.get("??")
+                                title = section.get("title") or section.get("段落标题") or section.get("标题")
+                                body = section.get("body") or section.get("内容") or section.get("正文")
                                 if title and body:
                                     valid_sections.append({"title": str(title), "body": str(body)})
                         total_chinese = sum(chinese_char_count(section["body"]) for section in valid_sections)
@@ -819,7 +819,7 @@ def enrich_with_ai(
                 item["fullBrief"] = "\n\n".join(
                     f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
                 )
-                item["tags"] = [tag for tag in item["tags"] if tag != "AI ??"] + ["AI ??"]
+                item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
         finally:
@@ -862,14 +862,14 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             },
         } for item in batch]
         prompt = (
-            "?????????AI????????????sourceMaterial?draft?????????????????pass?"
-            "(1)???????????????????????(2)??????????????"
-            "(3)???????????????????????????(4)contentType????????contentTypeLocked?true????????topics???"
-            "sourceTitle????????????????????????????????????GitHub?????????????????????"
-            "(5)?????3-5????????????????(6)??????????????????????????"
-            "(7)???????????????????????????????"
-            "??????technicalRelevanceScore?innovationScore?0?1??"
-            "???JSON?{\"items\":[{\"id\":\"...\",\"pass\":true,\"technicalRelevanceScore\":0.8,\"innovationScore\":0.7,\"issues\":[]}]}?\n\n"
+            "你是独立于撰稿人的AI科技新闻审稿人。逐条比较sourceMaterial与draft，宁缺毋滥。只有同时满足以下条件才pass："
+            "(1)标题、摘要、正文为自然中文且没有完整英文句子；(2)首段立即说清做到什么及贡献；"
+            "(3)所有具体数字、能力、方法和因果表述均能从材料得到支持；(4)contentType与本条事件相符，contentTypeLocked为true时没有被修改，且topics准确；"
+            "sourceTitle中的核心产品、模型、仓库或方法实体必须在标题或摘要中保持一致；公开可见的GitHub仓库若无明确开源许可证，不得称为开源项目。"
+            "(5)正文为动态3-5段且信息密集，不重复、不凑模板；(6)没有编辑流程、来源声明、核查提醒或筛选方法等元话语；"
+            "(7)不是人物花边、娱乐、纯融资、普通代码推送或无实质变化的营销稿。"
+            "分别独立重评technicalRelevanceScore与innovationScore（0到1）。"
+            "只返回JSON：{\"items\":[{\"id\":\"...\",\"pass\":true,\"technicalRelevanceScore\":0.8,\"innovationScore\":0.7,\"issues\":[]}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
         payload = json.dumps({
@@ -878,7 +878,7 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             "max_tokens": 3000,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": "?????????????????????????JSON?"},
+                {"role": "system", "content": "执行严格、独立、失败关闭的中文科技新闻审稿，只输出JSON。"},
                 {"role": "user", "content": prompt},
             ],
         }, ensure_ascii=False).encode("utf-8")
@@ -1098,7 +1098,7 @@ def main() -> int:
                 writer_ready.append(item)
             else:
                 if not scores_valid:
-                    issues.append("??????")
+                    issues.append("撰稿评分缺失")
                 print(f"writer gate rejected {item.get('id')}: {issues}", file=sys.stderr)
         items = writer_ready
         writer_ready_count = len(items)
@@ -1122,10 +1122,10 @@ def main() -> int:
             for start in range(0, len(items), BATCH_SIZE)
         )
         coverage_counts = {
-            "???": sum("???" in item.get("topics", []) for item in items),
+            "大模型": sum("大模型" in item.get("topics", []) for item in items),
             "Agent": sum("Agent" in item.get("topics", []) for item in items),
-            "??": sum(item.get("contentType") == "??" for item in items),
-            "????": sum(item.get("contentType") == "????" for item in items),
+            "论文": sum(item.get("contentType") == "论文" for item in items),
+            "开源项目": sum(item.get("contentType") == "开源项目" for item in items),
         }
         print(
             f"editorial audit: submitted={submitted_count} enriched={enriched_count} writer_ready={writer_ready_count} "
