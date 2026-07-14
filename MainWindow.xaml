@@ -18,11 +18,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="AI Frontier" Subtitle="每天看懂大模型与 Agent">
-            <TitleBar.IconSource>
-                <ImageIconSource ImageSource="Assets/AppIcon.ico" />
-            </TitleBar.IconSource>
-        </TitleBar>
+        <TitleBar x:Name="AppTitleBar" Title="AI Frontier" Subtitle="每天看懂大模型与 Agent" />
 
         <Frame x:Name="RootFrame" Grid.Row="1" />
     </Grid>
