@@ -24,7 +24,7 @@ public sealed partial class BuiltInCollectorService
                 : [new GitHubDiscoveryQuery
                 {
                     Query = configuration.GitHubDiscovery.Query,
-                    Category = "开源项目",
+                    Category = "????",
                     MinimumStars = configuration.GitHubDiscovery.MinimumStars,
                     MaxItems = configuration.GitHubDiscovery.MaxItems
                 }];
@@ -39,7 +39,7 @@ public sealed partial class BuiltInCollectorService
             .ToList();
         foreach (var item in eligible.Where(item => DateTimeOffset.TryParse(item.PublishedAt, out var date) && date < freshCutoff))
         {
-            if (!item.Tags.Contains("补充阅读")) item.Tags.Add("补充阅读");
+            if (!item.Tags.Contains("????")) item.Tags.Add("????");
         }
         var queues = results
             .Select(items => new Queue<NewsItem>(items
@@ -98,36 +98,40 @@ public sealed partial class BuiltInCollectorService
                 var link = repository.GetProperty("html_url").GetString() ?? string.Empty;
                 var description = repository.TryGetProperty("description", out var descriptionNode) && descriptionNode.ValueKind == JsonValueKind.String
                     ? descriptionNode.GetString() ?? string.Empty
-                    : "仓库近期保持活跃，建议打开 README 与提交记录进一步判断用途。";
+                    : "????????????? README ?????????????";
                 var language = repository.TryGetProperty("language", out var languageNode) && languageNode.ValueKind == JsonValueKind.String
-                    ? languageNode.GetString() ?? "未标注"
-                    : "未标注";
+                    ? languageNode.GetString() ?? "???"
+                    : "???";
                 var pushedAt = repository.GetProperty("pushed_at").GetString() ?? DateTimeOffset.UtcNow.ToString("O");
-                var summary = $"{description}（★ {stars:N0}，主要语言：{language}）";
+                var summary = $"{description}?? {stars:N0}??????{language}?";
+                var category = InferCategory(discovery.Category, title, description);
+                const string contentType = "????";
                 output.Add(new NewsItem
                 {
                     Id = Slug(link),
-                    Category = InferCategory(discovery.Category, title, description),
+                    Category = category,
+                    ContentType = contentType,
+                    Topics = InferTopics(category, title, description, contentType),
                     Brand = "GitHub",
                     BrandColor = "#24292F",
                     LogoAsset = "Assets/Brands/github.svg",
                     Title = title,
                     Summary = summary,
                     PublishedAt = DateTimeOffset.Parse(pushedAt).ToLocalTime().ToString("yyyy-MM-dd"),
-                    SourceName = $"GitHub {discovery.Category}项目发现",
+                    SourceName = $"GitHub {discovery.Category}????",
                     SourceUrl = link,
                     ReadMinutes = 4,
-                    Confidence = "项目仓库",
+                    Confidence = "????",
                     WhyItMatters = WhyItMatters(discovery.Category),
-                    KeyFacts = [$"GitHub 当前显示约 {stars:N0} 个 Star，主要语言为 {language}。", description],
-                    Context = "该仓库由内置发现器从近期仍在更新、且已有一定社区关注度的 AI 项目中筛选。",
+                    KeyFacts = [$"GitHub ????? {stars:N0} ? Star?????? {language}?", description],
+                    Context = "???????????????????????????? AI ??????",
                     BeginnerExplainer = BeginnerExplanation(discovery.Category),
                     Impact = WhyItMatters(discovery.Category),
-                    Limitations = "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。",
-                    WhatToWatch = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。",
-                    Details = [$"GitHub 当前显示约 {stars:N0} 个 Star，主要语言为 {language}。", description],
+                    Limitations = "Star ?????????????????????????????????????",
+                    WhatToWatch = "???????Release?Issue ?????????????????????????????",
+                    Details = [$"GitHub ????? {stars:N0} ? Star?????? {language}?", description],
                     SourceTrail = [$"GitHub repository API: {link}"],
-                    Tags = [discovery.Category, "GitHub", "近期活跃", "补充发现", "自动采集"]
+                    Tags = [discovery.Category, "GitHub", "????", "????", "??????"]
                 });
             }
             return output.Take(discovery.MaxItems).ToList();
@@ -190,14 +194,17 @@ public sealed partial class BuiltInCollectorService
         var summary = Truncate(description, 240);
         if (string.IsNullOrWhiteSpace(summary))
         {
-            summary = "由客户端从官方信息源自动发现。打开详情可查看来源和进一步核查提示。";
+            summary = "?????????????????????????????????";
         }
 
         var category = InferCategory(source.Category, title, description);
+        var contentType = InferContentType(source, title, description);
         return new NewsItem
         {
             Id = Slug(link),
             Category = category,
+            ContentType = contentType,
+            Topics = InferTopics(category, title, description, contentType),
             Brand = source.Brand,
             BrandColor = source.BrandColor,
             LogoAsset = source.LogoAsset,
@@ -210,14 +217,14 @@ public sealed partial class BuiltInCollectorService
             Confidence = source.Trust,
             WhyItMatters = WhyItMatters(category),
             KeyFacts = [summary],
-            Context = "这条信息由应用内置采集器直接从配置中的官方 RSS、Atom 或公开 API 获取。",
+            Context = "????????????????????? RSS?Atom ??? API ???",
             BeginnerExplainer = BeginnerExplanation(category),
-            Impact = "是否形成实际影响仍取决于原文披露的能力、开放范围、成本和后续采用情况。",
-            Limitations = "自动采集只能确认来源发布了该内容，不能替代人工复核、跨来源验证或专业测评。",
-            WhatToWatch = "继续观察官方文档、代码仓库、评测结果和真实用户反馈是否出现可验证更新。",
-            Details = [summary, "本条为内置采集器的保底结果；连接 GitHub 编辑源或 Codex 后可获得更完整的中文分析。"],
+            Impact = "???????????????????????????????????",
+            Limitations = "?????????????????????????????????????",
+            WhatToWatch = "???????????????????????????????????",
+            Details = [summary, "???????????????? GitHub ???? Codex ?????????????"],
             SourceTrail = [$"{source.Name}: {link}"],
-            Tags = [category, source.Brand, "自动采集"]
+            Tags = [category, source.Brand, "????", "??????"]
         };
     }
 
@@ -236,7 +243,7 @@ public sealed partial class BuiltInCollectorService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (category, minimum) in configuration.CategoryMinimums)
         {
-            foreach (var item in pool.Where(item => item.Category == category).Take(minimum))
+            foreach (var item in pool.Where(item => MatchesCategory(item, category)).Take(minimum))
             {
                 if (seen.Add(item.SourceUrl)) result.Add(item);
             }
@@ -252,11 +259,76 @@ public sealed partial class BuiltInCollectorService
     private static string InferCategory(string fallback, string title, string description)
     {
         var text = $"{title} {description}".ToLowerInvariant();
-        var agentTerms = new[] { "agent", "agentic", "multi-agent", "tool use", "computer use", "智能体", "代理系统" };
+        var agentTerms = new[] { "agent", "agentic", "multi-agent", "tool use", "computer use", "???", "????" };
         if (agentTerms.Any(text.Contains)) return "Agent";
-        var modelTerms = new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型" };
-        return modelTerms.Any(text.Contains) ? "大模型" : fallback;
+        var modelTerms = new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "???", "????" };
+        return modelTerms.Any(text.Contains) ? "???" : fallback;
     }
+
+    private static string InferContentType(FeedSource source, string title, string description)
+    {
+        var text = $"{source.Name} {source.Url} {title} {description}".ToLowerInvariant();
+        if (source.Trust.Contains("??", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("arxiv.org") || text.Contains("aclanthology.org"))
+        {
+            return "??";
+        }
+        if (text.Contains("github.com") || source.Category == "????" &&
+            (text.Contains("open source") || text.Contains("??")))
+        {
+            return "????";
+        }
+        if (source.Category == "???" ||
+            new[] { "model release", "introducing", "??", "????", "checkpoint", "weights" }.Any(text.Contains))
+        {
+            return "?????";
+        }
+        if (source.Category == "????")
+        {
+            return "????";
+        }
+        return "????";
+    }
+
+    private static List<string> InferTopics(
+        string fallback,
+        string title,
+        string description,
+        string contentType)
+    {
+        var text = $"{title} {description}".ToLowerInvariant();
+        var topics = new List<string>();
+        void Add(string topic)
+        {
+            if (!topics.Contains(topic, StringComparer.OrdinalIgnoreCase))
+            {
+                topics.Add(topic);
+            }
+        }
+
+        Add(fallback);
+        if (new[] { "agent", "agentic", "multi-agent", "tool use", "computer use", "???", "????" }.Any(text.Contains))
+        {
+            Add("Agent");
+        }
+        if (new[] { "large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "???", "????" }.Any(text.Contains))
+        {
+            Add("???");
+        }
+        if (contentType == "??")
+        {
+            Add("????");
+        }
+        if (contentType == "????")
+        {
+            Add("????");
+        }
+        return topics;
+    }
+
+    private static bool MatchesCategory(NewsItem item, string category) =>
+        string.Equals(item.Category, category, StringComparison.OrdinalIgnoreCase) ||
+        item.Topics?.Any(topic => string.Equals(topic, category, StringComparison.OrdinalIgnoreCase)) == true;
 
     private static string Value(XElement parent, string localName) =>
         parent.Elements().FirstOrDefault(element => element.Name.LocalName == localName)?.Value?.Trim() ?? string.Empty;
@@ -281,7 +353,7 @@ public sealed partial class BuiltInCollectorService
     }
 
     private static string Truncate(string value, int length) =>
-        value.Length <= length ? value : value[..length].TrimEnd() + "…";
+        value.Length <= length ? value : value[..length].TrimEnd() + "?";
 
     private static string Slug(string value)
     {
@@ -294,19 +366,19 @@ public sealed partial class BuiltInCollectorService
 
     private static string WhyItMatters(string category) => category switch
     {
-        "大模型" => "模型能力、价格或开放方式的变化，可能影响现有 AI 产品的能力边界与使用成本。",
-        "Agent" => "Agent 关注模型能否持续规划、调用工具并完成真实任务，而不只是回答一个问题。",
-        "开源项目" => "开源实现能让更多开发者复现、修改和检验方法，但热度不等于生产可用。",
-        "重要研究" => "研究结果可能改变对模型能力或限制的理解，但论文结论仍需复现和同行检验。",
-        _ => "这条信息可能影响 AI 产品、开发生态或行业采用节奏。"
+        "???" => "?????????????????????? AI ?????????????",
+        "Agent" => "Agent ??????????????????????????????????",
+        "????" => "?????????????????????????????????",
+        "????" => "???????????????????????????????????",
+        _ => "???????? AI ???????????????"
     };
 
     private static string BeginnerExplanation(string category) => category switch
     {
-        "Agent" => "可以把 Agent 理解为会围绕目标连续执行多步操作的 AI 系统。",
-        "开源项目" => "开源表示代码或模型可以被公开检查和二次开发，但仍要查看许可证与维护状态。",
-        "重要研究" => "论文是研究团队对方法和实验的正式描述，不等于技术已经成为成熟产品。",
-        _ => "大模型是能够处理和生成文本、图像、音频或代码的通用 AI 基础系统。"
+        "Agent" => "??? Agent ????????????????? AI ???",
+        "????" => "????????????????????????????????????",
+        "????" => "?????????????????????????????????",
+        _ => "????????????????????????? AI ?????"
     };
 
     private static HttpClient CreateClient()

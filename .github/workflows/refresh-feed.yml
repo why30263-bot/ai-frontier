@@ -9,22 +9,29 @@ permissions:
   contents: write
   models: read
 
+concurrency:
+  group: refresh-independent-ai-feed
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Collect official feeds
-        run: python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json --drop-existing
+        run: python scripts/update_feed.py --config Data/source-feeds.json --output Data/news.json --drop-existing --fail-on-preserve
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           AI_API_KEY: ${{ secrets.AI_API_KEY || github.token }}
           AI_API_BASE: ${{ vars.AI_API_BASE || 'https://models.github.ai/inference' }}
           AI_MODEL: ${{ vars.AI_MODEL || 'openai/gpt-4.1' }}
-      - name: Validate schema
-        run: python -m json.tool Data/news.json > /dev/null
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || vars.AI_MODEL || 'openai/gpt-4.1' }}
+      - name: Validate schema and publication gates
+        run: python scripts/validate_release.py --news Data/news.json --project AIFrontier.csproj --max-age-hours 24
       - name: Commit changed feed
         run: |
           git config user.name "ai-frontier-bot"

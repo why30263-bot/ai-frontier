@@ -8,7 +8,7 @@ namespace AIFrontier.Models;
 
 public sealed class NewsEdition
 {
-    public int SchemaVersion { get; set; }
+    public int SchemaVersion { get; set; } = 2;
     public string EditionDate { get; set; } = string.Empty;
     public int WindowHours { get; set; }
     public DateTimeOffset GeneratedAt { get; set; }
@@ -19,6 +19,8 @@ public sealed class NewsItem
 {
     public string Id { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public List<string> Topics { get; set; } = [];
     public string Brand { get; set; } = string.Empty;
     public string BrandColor { get; set; } = "#202020";
     public string LogoAsset { get; set; } = string.Empty;
@@ -66,20 +68,28 @@ public sealed class NewsItem
         : new SvgImageSource(LogoUri);
 
     [JsonIgnore]
-    public string ReadingMeta => $"{PublishedAt}  ·  {ReadMinutes} 分钟";
+    public string ReadingMeta => $"{PublishedAt}  ?  {ReadMinutes} ??";
 
     [JsonIgnore]
-    public string AccessibleTitle => $"{Category}，{Title}，来源 {SourceName}";
+    public string AccessibleTitle => $"{ContentLabel}?{Title}??? {SourceName}";
+
+    [JsonIgnore]
+    public string TopicLabel => Topics.Count == 0 ? Category : string.Join(" ? ", Topics.Take(2));
+
+    [JsonIgnore]
+    public string ContentLabel => string.IsNullOrWhiteSpace(ContentType)
+        ? TopicLabel
+        : $"{ContentType} ? {TopicLabel}";
 
     [JsonIgnore]
     public string HeatLabel => HasDiscussionMetrics
-        ? $"综合热度 {HotScore:0}"
-        : $"趋势参考 {HotScore:0}";
+        ? $"???? {HotScore:0}"
+        : $"???? {HotScore:0}";
 
     [JsonIgnore]
     public string HeatDisclosure => HasDiscussionMetrics
-        ? $"综合公开讨论、升温速度、来源质量、创新性和新鲜度。{HeatReason}"
-        : $"当前未取得稳定的跨平台讨论快照，本分数只根据可核查来源、创新性、技术相关性和新鲜度计算。{HeatReason}";
+        ? $"?????????????????????????{HeatReason}"
+        : $"????????????????????????????????????????????{HeatReason}";
 
     private static Color ParseHex(string value)
     {
@@ -105,7 +115,7 @@ public sealed class PreferenceProfile
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
     public Dictionary<string, double> TopicWeights { get; set; } = [];
     public Dictionary<string, double> SourceWeights { get; set; } = [];
-    public string Depth { get; set; } = "入门解释";
+    public string Depth { get; set; } = "????";
     public int MaxItems { get; set; } = 12;
     public List<string> BlockedSources { get; set; } = [];
     public List<string> BlockedTopics { get; set; } = [];

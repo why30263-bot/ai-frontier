@@ -23,11 +23,42 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Callable
 
 
 USER_AGENT = "AIFrontier/1.0 (+https://github.com/why30263-bot/ai-frontier)"
-AI_BATCH_SIZE = 5
+WRITER_BATCH_SIZE = 2
+REVIEW_BATCH_SIZE = 4
+SCHEMA_VERSION = 2
+PIPELINE_CONTRACT_VERSION = "2.2"
+CONTENT_TYPES = {"??", "????", "????", "Agent??", "????"}
+TOPIC_ORDER = ("???", "Agent", "????", "????", "????")
+BATCH_SIZE = 10
+MINIMUM_EDITION_ITEMS = 20
+CORE_DIMENSIONS = ("???", "Agent", "??", "????")
+CORE_DIMENSION_MINIMUMS = {"???": 2, "Agent": 2, "??": 1, "????": 1}
+OPEN_SOURCE_LICENSES = {
+    "Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MPL-2.0",
+    "GPL-2.0", "GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0", "GPL-3.0-only",
+    "GPL-3.0-or-later", "LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later",
+    "LGPL-3.0", "LGPL-3.0-only", "LGPL-3.0-or-later", "AGPL-3.0",
+    "AGPL-3.0-only", "AGPL-3.0-or-later", "EPL-2.0", "Unlicense",
+}
+
+# These phrases describe the editorial machinery rather than the event. They must
+# never leak into reader-facing copy.
+PROCESS_PHRASES = (
+    "??????", "????", "????", "??????", "????", "???????",
+    "????", "???", "????", "???", "????", "?????", "????",
+    "????", "??????????", "??????", "????",
+)
+LOW_VALUE_TERMS = (
+    "funding round", "raises $", "valuation", "celebrity", "singer", "influencer",
+    "??", "??", "??", "??", "??", "??", "??", "??", "??",
+    "successful people", "return to tech", "book excerpt", "??", "??", "???",
+)
 
 
 def fetch(url: str, timeout: int = 20) -> bytes:
@@ -73,12 +104,23 @@ def fetch_source_material(item: dict) -> str:
     url = item.get("sourceUrl", "")
     if not url.startswith("http"):
         return fallback
-    candidates = [url]
     parsed = urllib.parse.urlsplit(url)
     parts = [part for part in parsed.path.split("/") if part]
+    is_github_release = parsed.netloc.lower() == "github.com" and "releases" in parts
+    candidates = [] if is_github_release else [url]
     if parsed.netloc.lower() == "github.com" and len(parts) >= 2:
         branch = item.get("defaultBranch", "main")
-        candidates.insert(0, f"https://raw.githubusercontent.com/{parts[0]}/{parts[1]}/{branch}/README.md")
+        readme_url = f"https://raw.githubusercontent.com/{parts[0]}/{parts[1]}/{branch}/README.md"
+        if is_github_release:
+            try:
+                decoded = fetch(readme_url, timeout=12).decode("utf-8", errors="ignore")
+                readme = clean_document_text(decoded)
+                if readme:
+                    return (fallback[:3500] + "\n\n?????README??\n" + readme[:6500])[:12000]
+            except Exception:  # noqa: BLE001
+                return fallback[:12000]
+        else:
+            candidates.insert(0, readme_url)
     for candidate in candidates:
         try:
             payload = fetch(candidate, timeout=12)
@@ -115,92 +157,70 @@ def parse_date(value: str) -> dt.datetime:
         try:
             parsed = parsedate_to_datetime(value)
         except (TypeError, ValueError):
-            parsed = dt.datetime.now(dt.timezone.utc)
+            # Invalid or missing publication times are old, never silently "now".
+            parsed = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
     return parsed
 
 
-def infer_category(default: str, title: str, description: str) -> str:
+def infer_topics(
+    title: str,
+    description: str,
+    content_type: str,
+    candidates: list[str] | None = None,
+) -> list[str]:
+    """Classify subject matter without changing the kind of source material."""
     text = f"{title} {description}".lower()
-    agent_terms = ("agent", "agentic", "multi-agent", "autonomous agent", "tool use", "computer use", "智能体", "代理系统")
-    model_terms = ("large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "reasoning model", "大模型", "基础模型")
-    if any(term in text for term in agent_terms):
+    groups = {
+        "Agent": ("agent", "agentic", "multi-agent", "tool use", "computer use", "???", "????", "???"),
+        "???": ("large language model", "foundation model", " llm", "gpt-", "gemini", "claude", "qwen", "deepseek", "???", "????", "?????", "????"),
+        "????": ("paper", "research", "benchmark", "dataset", "arxiv", "??", "??", "??", "???", "??"),
+        "????": ("open source", "github", "repository", "sdk", "framework", "??", "??", "??"),
+        "????": ("launch", "release", "api", "product", "platform", "??", "??", "??", "??"),
+    }
+    intrinsic = {
+        "??": "????",
+        "????": "????",
+        "????": "???",
+        "Agent??": "Agent",
+        "????": "????",
+    }.get(content_type, "????")
+    topics = [intrinsic]
+    topics.extend(topic for topic, terms in groups.items() if any(term in text for term in terms))
+    # Configured topics are discovery hints only. They neither add a topic without
+    # evidence nor suppress an explicitly detected cross-topic.
+    _ = candidates
+    return sorted(dict.fromkeys(topics), key=lambda topic: TOPIC_ORDER.index(topic))[:4]
+
+
+def compatibility_category(content_type: str, topics: list[str]) -> str:
+    """Keep schema-v1 clients usable while schema-v2 readers use both dimensions."""
+    if content_type == "??":
+        return "????"
+    if content_type == "????":
+        return "????"
+    if content_type == "????":
+        return "???"
+    if content_type == "Agent??":
         return "Agent"
-    if any(term in text for term in model_terms):
-        return "大模型"
-    return default
+    return next((topic for topic in topics if topic in TOPIC_ORDER), "????")
 
 
-def fallback_analysis(category: str, summary: str, source_name: str) -> dict:
-    explainers = {
-        "Agent": "Agent 是会围绕目标连续规划、调用工具并检查结果的 AI 系统。",
-        "开源项目": "开源项目允许公开检查和二次开发，但仍要核对许可证、维护频率和真实部署。",
-        "重要研究": "论文描述的是方法和实验结论，不等于技术已经成为成熟产品。",
-        "大模型": "大模型是处理文本、图像、音频或代码的通用 AI 基础系统。",
+def fallback_analysis(summary: str) -> dict:
+    """Internal-only placeholder; entries are never published until AI copy passes review."""
+    return {
+        "keyFacts": [summary],
+        "context": "",
+        "beginnerExplainer": "",
+        "impact": "",
+        "limitations": "",
+        "whatToWatch": "",
+        "briefSections": [],
+        "fullBrief": "",
+        "technicalRelevanceScore": 0.0,
+        "innovationScore": 0.0,
     }
-    contexts = {
-        "大模型": "大模型竞争已从单纯比较参数量，转向推理能力、多模态、工具调用、成本和可部署性的综合竞争。",
-        "Agent": "Agent 正从演示型对话走向可检查的多步骤工作流，可靠性、权限控制和失败恢复是落地关键。",
-        "开源项目": "开源 AI 生态更新很快，代码可见不代表容易复现；许可证、维护状态和部署成本同样重要。",
-        "重要研究": "前沿论文常先给出受控实验结果，能否推广到真实场景仍需要复现、对照实验和后续工作验证。",
-        "产业动态": "产业发布需要区分产品可用性、预览计划和宣传性表述，并观察真实客户是否持续采用。",
-    }
-    impacts = {
-        "大模型": "如果原文披露的能力、价格或开放范围可复现，可能改变现有 AI 产品的能力边界与使用成本。",
-        "Agent": "它可能影响 AI 能否从回答问题进一步走向完成真实任务，但稳定性和权限边界比演示效果更重要。",
-        "开源项目": "它为开发者提供了可检查、可修改的实现路径，价值取决于复现难度、维护活跃度和生产适配。",
-        "重要研究": "这项工作可能改变对模型能力或限制的理解，但论文结果在独立复现前应视为研究证据而非成熟结论。",
-        "产业动态": "它反映厂商对 AI 产品化方向的投入；实际影响要看功能是否普遍开放、成本是否可控以及客户采用。",
-    }
-    analysis = {
-        "keyFacts": [f"原始信息来自 {source_name}。", summary],
-        "context": contexts.get(category, "该条目处于模型能力、Agent 工程化和开源生态持续演进的背景中。"),
-        "beginnerExplainer": explainers.get(category, "这条信息反映 AI 产品、研究或开发生态的一次公开更新。"),
-        "impact": impacts.get(category, "实际影响取决于开放范围、成本、可复现性和真实用户采用，不能只根据发布标题判断。"),
-        "limitations": "自动采集能确认原始来源发布了内容，但无法替代人工核查、跨来源验证或专业测评。",
-        "whatToWatch": "继续观察官方文档或代码是否完整、是否出现独立评测，以及真实部署和失败案例能否验证原文主张。",
-    }
-    section_sets = {
-        "重要研究": [
-            ("研究结论", summary),
-            ("核心贡献", analysis["impact"]),
-            ("方法与实验", "当前来源摘要只提供了方法概览，具体模型、数据集、对照实验和评价指标需要回到论文原文核对。"),
-            ("结果意味着什么", analysis["context"]),
-            ("证据边界", analysis["limitations"]),
-        ],
-        "开源项目": [
-            ("它是什么，做到了什么", summary),
-            ("核心贡献", analysis["impact"]),
-            ("它怎样工作", analysis["context"]),
-            ("谁会用到", "它主要面向希望检查、修改或部署相关 AI 能力的开发者，具体功能和安装条件以项目文档为准。"),
-            ("成熟度与限制", f"{analysis['limitations']} {analysis['whatToWatch']}"),
-        ],
-        "大模型": [
-            ("这次真正带来了什么", summary),
-            ("核心能力与改进", analysis["impact"]),
-            ("怎样使用", "模型的调用方式、开放范围、价格和地区条件以官方文档为准；摘要没有披露的内容不作补写。"),
-            ("对谁有影响", analysis["context"]),
-            ("限制与待验证问题", f"{analysis['limitations']} {analysis['whatToWatch']}"),
-        ],
-        "Agent": [
-            ("它能完成什么任务", summary),
-            ("关键贡献", analysis["impact"]),
-            ("它怎样行动", "需要结合原文核对它调用了哪些工具、如何规划步骤、怎样检查结果以及失败后如何恢复。"),
-            ("实际价值", analysis["context"]),
-            ("可靠性、权限与失败风险", f"{analysis['limitations']} {analysis['whatToWatch']}"),
-        ],
-    }
-    sections = section_sets.get(category, [
-        ("发生了什么", summary),
-        ("关键变化", analysis["impact"]),
-        ("事件经过", "当前来源摘要提供了事件主线；人物、机构、数字和时间节点需要结合完整材料整理。"),
-        ("会带来什么影响", analysis["context"]),
-        ("接下来要看什么", analysis["whatToWatch"]),
-    ])
-    analysis["briefSections"] = [{"title": title, "body": body} for title, body in sections]
-    analysis["fullBrief"] = "\n\n".join(f"{title}\n{body}" for title, body in sections)
-    return analysis
 
 
 def parse_feed(source: dict) -> list[dict]:
@@ -224,14 +244,21 @@ def parse_feed(source: dict) -> list[dict]:
         if not title or not link.startswith("http"):
             continue
         date = parse_date(published)
-        summary = description[:260].rstrip() + ("…" if len(description) > 260 else "")
+        summary = description[:260].rstrip() + ("?" if len(description) > 260 else "")
         if not summary:
-            summary = "由独立采集器从官方信息源发现，建议打开原文查看完整内容。"
-        category = infer_category(source["category"], title, description)
-        analysis = fallback_analysis(category, summary, source["name"])
+            summary = "????????????????????????????"
+        content_type = source.get("contentType", "????")
+        if content_type not in CONTENT_TYPES:
+            continue
+        topics = infer_topics(title, description, content_type, source.get("topics", []))
+        category = compatibility_category(content_type, topics)
+        analysis = fallback_analysis(summary)
         item = {
             "id": "feed-" + hashlib.sha256(link.encode()).hexdigest()[:16],
             "category": category,
+            "contentType": content_type,
+            "contentTypeLocked": bool(source.get("contentTypeLocked", False)),
+            "topics": topics,
             "brand": source["brand"],
             "brandColor": source["brandColor"],
             "logoAsset": source.get("logoAsset", ""),
@@ -242,10 +269,10 @@ def parse_feed(source: dict) -> list[dict]:
             "sourceName": source["name"],
             "sourceUrl": link,
             "readMinutes": max(2, min(8, len(description) // 350 + 2)),
-            "confidence": source.get("trust", "官方来源"),
-            "whyItMatters": analysis["impact"],
+            "confidence": source.get("trust", "????"),
+            "whyItMatters": "",
             "details": [summary],
-            "tags": [category, source["brand"], "自动采集"],
+            "tags": [*topics, content_type, source["brand"], "????"],
             "sourceTrail": [f"{source['name']}: {link}"],
             **analysis,
         }
@@ -257,74 +284,119 @@ def collect_github(config: dict) -> list[dict]:
     discovery = config.get("githubDiscovery", {})
     if not discovery.get("enabled", True):
         return []
-    output: list[dict] = []
     since = (dt.date.today() - dt.timedelta(days=int(config.get("supplementDays", 14)))).isoformat()
     query_specs = discovery.get("queries") or [{
         "query": discovery.get("query", "topic:artificial-intelligence stars:>500"),
-        "category": "开源项目",
+        "topics": ["????"],
         "minimumStars": discovery.get("minimumStars", 500),
         "maxItems": discovery.get("maxItems", 4),
     }]
-    for spec in query_specs:
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    github_token = os.getenv("GITHUB_TOKEN", "").strip()
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+
+    def collect_spec(spec: dict) -> list[dict]:
+        output: list[dict] = []
         query = f"{spec['query']} pushed:>={since}"
         url = "https://api.github.com/search/repositories?" + urllib.parse.urlencode({
             "q": query,
             "sort": "stars",
             "order": "desc",
-            "per_page": min(10, int(spec.get("maxItems", 4)) * 2),
+            "per_page": min(10, int(spec.get("maxItems", 4))),
         })
-        request = urllib.request.Request(url, headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        })
+        request = urllib.request.Request(url, headers=headers)
         try:
-            payload = json.loads(urllib.request.urlopen(request, timeout=20).read().decode("utf-8"))
+            payload = json.loads(urllib.request.urlopen(request, timeout=10).read().decode("utf-8"))
         except Exception as exc:  # noqa: BLE001
-            print(f"warning: GitHub project discovery ({spec.get('category')}): {exc}", file=sys.stderr)
-            continue
-        default_category = spec.get("category", "开源项目")
+            print(f"warning: GitHub project discovery ({spec.get('topics')}): {exc}", file=sys.stderr)
+            return []
         minimum_stars = int(spec.get("minimumStars", 100))
-        for repository in payload.get("items", [])[:int(spec.get("maxItems", 4))]:
+        accepted = 0
+        for repository in payload.get("items", []):
+            if accepted >= int(spec.get("maxItems", 4)):
+                break
             stars = int(repository.get("stargazers_count", 0))
             if stars < minimum_stars:
                 continue
-            title = repository.get("full_name", "")
-            link = repository.get("html_url", "")
-            description = clean_text(repository.get("description") or "仓库近期保持活跃，建议打开 README 与提交记录进一步判断用途。")
-            category = infer_category(default_category, title, description)
-            language = repository.get("language") or "未标注"
-            license_name = (repository.get("license") or {}).get("spdx_id") or "未标注"
-            summary = f"{description}（★ {stars:,}，主要语言：{language}）"
-            analysis = fallback_analysis(category, summary, "GitHub 仓库")
+            license_name = (repository.get("license") or {}).get("spdx_id") or ""
+            if license_name not in OPEN_SOURCE_LICENSES:
+                continue
+            full_name = repository.get("full_name", "")
+            if not full_name:
+                continue
+            release_url = f"https://api.github.com/repos/{full_name}/releases/latest"
+            try:
+                release = json.loads(urllib.request.urlopen(
+                    urllib.request.Request(release_url, headers=headers), timeout=6
+                ).read().decode("utf-8"))
+            except Exception:  # noqa: BLE001 - repositories without a release are intentionally skipped
+                continue
+            released_at = release.get("published_at") or release.get("created_at") or ""
+            if not released_at or released_at[:10] < since:
+                continue
+            link = release.get("html_url") or repository.get("html_url", "")
+            description = clean_text(repository.get("description") or "")
+            release_notes = clean_text(release.get("body") or "")
+            if len(release_notes) < 80:
+                continue
+            release_name = clean_text(release.get("name") or release.get("tag_name") or "???")
+            title = f"{full_name} {release_name}"
+            topics = infer_topics(
+                title,
+                f"{description} {release_notes}",
+                "????",
+                spec.get("topics", ["????"]),
+            )
+            category = compatibility_category("????", topics)
+            language = repository.get("language") or "???"
+            summary = f"{description} {release_notes[:500]}"
+            analysis = fallback_analysis(summary)
             analysis["keyFacts"] = [
-                f"GitHub 当前显示约 {stars:,} 个 Star，主要语言为 {language}。",
-                f"仓库许可证标识：{license_name}；最近推送时间：{repository.get('pushed_at', '未知')}。",
-                description,
+                f"???{release.get('tag_name', release_name)}??????{released_at[:10]}?",
+                f"??? {stars:,} ? Star??????{language}?????{license_name}?",
+                release_notes,
             ]
-            analysis["limitations"] = "Star 数和近期推送只能反映关注度与活跃信号，不证明项目安全、稳定或适合生产环境。"
-            analysis["whatToWatch"] = "检查最近提交、Release、Issue 响应、许可证、安装复现和实际资源消耗，再决定是否投入学习。"
             output.append({
-            "id": "github-" + hashlib.sha256(link.encode()).hexdigest()[:16],
-            "category": category,
-            "brand": "GitHub",
-            "brandColor": "#24292F",
-            "logoAsset": "Assets/Brands/github.svg",
-            "title": title,
-            "summary": summary,
-            "sourceMaterial": f"{description} Star: {stars:,}; 主要语言: {language}; 许可证: {license_name}; 最近推送: {repository.get('pushed_at', '未知')}。",
-            "defaultBranch": repository.get("default_branch") or "main",
-            "publishedAt": (repository.get("pushed_at") or dt.datetime.now(dt.timezone.utc).isoformat())[:10],
-            "sourceName": f"GitHub {category}项目发现",
-            "sourceUrl": link,
-            "readMinutes": 4,
-            "confidence": "项目仓库",
-            "whyItMatters": analysis["impact"],
-            "details": analysis["keyFacts"],
-            "tags": [category, "GitHub", "近期活跃", "补充发现", "自动采集"],
-            "sourceTrail": [f"GitHub repository API: {link}"],
-            **analysis,
+                "id": "github-" + hashlib.sha256(link.encode()).hexdigest()[:16],
+                "category": category,
+                "contentType": "????",
+                "contentTypeLocked": True,
+                "topics": topics,
+                "brand": "GitHub",
+                "brandColor": "#24292F",
+                "logoAsset": "Assets/Brands/github.svg",
+                "title": title,
+                "summary": summary,
+                "sourceMaterial": (
+                    f"???{full_name}\n???{release_name}\n?????{released_at}\n"
+                    f"?????{description}\nRelease notes?{release_notes}\n"
+                    f"Star?{stars:,}??????{language}?????{license_name}?"
+                ),
+                "defaultBranch": repository.get("default_branch") or "main",
+                "publishedAt": released_at[:10],
+                "sourceName": "GitHub Release",
+                "sourceUrl": link,
+                "readMinutes": 4,
+                "confidence": "????",
+                "whyItMatters": "",
+                "details": analysis["keyFacts"],
+                "tags": [*topics, "????", "GitHub", "????", "????"],
+                "sourceTrail": [f"GitHub Release: {link}"],
+                **analysis,
             })
+            accepted += 1
+        return output
+
+    output: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(6, len(query_specs))) as executor:
+        futures = [executor.submit(collect_spec, spec) for spec in query_specs]
+        for future in as_completed(futures):
+            output.extend(future.result())
     deduplicated = {item["sourceUrl"]: item for item in output}
     return list(deduplicated.values())
 
@@ -337,21 +409,147 @@ def chinese_char_count(value: object) -> int:
     return len(re.findall(r"[\u4e00-\u9fff]", str(value or "")))
 
 
-def is_chinese_report(item: dict) -> bool:
-    sections = item.get("briefSections", [])
-    return (
-        chinese_char_count(item.get("title")) >= 2
-        and chinese_char_count(item.get("summary")) >= 45
-        and len(sections) == 5
-        and sum(chinese_char_count(section.get("body")) for section in sections) >= 350
-        and all(chinese_char_count(section.get("body")) >= 50 for section in sections)
+def contains_english_sentence(value: object) -> bool:
+    text = str(value or "")
+    return bool(re.search(r"\b(?:[A-Za-z][A-Za-z0-9+.#/'-]*\s+){7,}[A-Za-z][A-Za-z0-9+.#/'-]*[.!?]?", text))
+
+
+def reader_copy(item: dict) -> list[str]:
+    values = [item.get("title", ""), item.get("summary", "")]
+    values.extend(str(value) for value in item.get("keyFacts", []))
+    for key in ("context", "beginnerExplainer", "impact", "limitations", "whatToWatch"):
+        values.append(str(item.get(key, "")))
+    for section in item.get("briefSections", []):
+        values.extend((str(section.get("title", "")), str(section.get("body", ""))))
+    return values
+
+
+def source_entity_anchors(title: object) -> list[str]:
+    text = str(title or "")
+    repository_names = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text)
+    known_names = (
+        "Codex", "ChatGPT", "Claude", "Gemini", "Qwen", "DeepSeek", "Transformer",
+        "SymCrypt", "Rust", "Lean", "NVIDIA", "Apple", "Google", "Microsoft", "OpenAI",
+        "Spotify", "Uber", "Siri", "Copilot", "GPT", "cBottle", "JAX", "Whisper",
     )
+    return list(dict.fromkeys([
+        *repository_names,
+        *(name for name in known_names if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)),
+    ]))
+
+
+def source_entity_consistent(item: dict) -> bool:
+    anchors = source_entity_anchors(item.get("_sourceTitle") or item.get("sourceTitle"))
+    if not anchors:
+        return True
+    reader_text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+    return any(anchor.lower() in reader_text for anchor in anchors)
+
+
+def chinese_report_issues(item: dict) -> list[str]:
+    sections = item.get("briefSections", [])
+    copy = reader_copy(item)
+    issues: list[str] = []
+    if item.get("contentType") not in CONTENT_TYPES:
+        issues.append("contentType??")
+    if not isinstance(item.get("topics"), list) or not item.get("topics"):
+        issues.append("topics??")
+    if chinese_char_count(item.get("title")) < 2:
+        issues.append("??????")
+    if chinese_char_count(str(item.get("title", ""))[:16]) < 4:
+        issues.append("??????????")
+    if chinese_char_count(item.get("summary")) < 50:
+        issues.append("??????50?")
+    if not 3 <= len(sections) <= 5:
+        issues.append("????3?5?")
+    if sum(chinese_char_count(section.get("body")) for section in sections) < 275:
+        issues.append("??????275?")
+    if not sections or chinese_char_count(sections[0].get("body")) < 60:
+        issues.append("??????60?")
+    if sections and not all(chinese_char_count(section.get("body")) >= 45 for section in sections):
+        issues.append("????45??????")
+    if any(contains_english_sentence(value) for value in copy):
+        issues.append("?????????????")
+    matched_process_phrases = sorted({phrase for value in copy for phrase in PROCESS_PHRASES if phrase in value})
+    if matched_process_phrases:
+        issues.append("??????????:" + "?".join(matched_process_phrases))
+    if not source_entity_consistent(item):
+        issues.append("????????????????")
+    return issues
+
+
+def is_chinese_report(item: dict) -> bool:
+    return not chinese_report_issues(item)
+
+
+def is_low_priority(item: dict) -> bool:
+    text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('sourceMaterial', '')}".lower()
+    return any(term in text for term in LOW_VALUE_TERMS)
+
+
+def event_key(item: dict) -> str:
+    existing = str(item.get("eventKey") or "")
+    if existing and not existing.startswith("title:"):
+        return existing
+    text = f"{item.get('sourceUrl', '')} {item.get('title', '')} {item.get('sourceMaterial', '')}"
+    patterns = (
+        (r"(?:doi\.org/|doi:\s*)(10\.\d{4,9}/[-._;()/:a-z0-9]+)", "doi"),
+        (r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?", "arxiv"),
+        (r"github\.com/([^/\s]+/[^/\s#?]+)(?:/releases/tag/([^/\s#?]+))?", "github"),
+    )
+    for pattern, kind in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            parts = [part.strip("./").lower() for part in match.groups() if part]
+            return f"{kind}:" + ":".join(parts)
+    return ""
+
+
+def title_tokens(title: str) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", title.lower())
+    words = {word for word in normalized.split() if len(word) >= 3}
+    chinese = "".join(re.findall(r"[\u4e00-\u9fff]", normalized))
+    words.update(chinese[index:index + 2] for index in range(max(0, len(chinese) - 1)))
+    return words
+
+
+def titles_refer_to_same_event(left: dict, right: dict) -> bool:
+    left_event_key = event_key(left)
+    right_event_key = event_key(right)
+    if left_event_key and right_event_key:
+        return left_event_key == right_event_key
+    left_title = normalize_title(left.get("title", ""))
+    right_title = normalize_title(right.get("title", ""))
+    if not left_title or not right_title:
+        return False
+    sequence = SequenceMatcher(None, left_title, right_title).ratio()
+    left_tokens = title_tokens(left.get("title", ""))
+    right_tokens = title_tokens(right.get("title", ""))
+    union = left_tokens | right_tokens
+    jaccard = len(left_tokens & right_tokens) / len(union) if union else 0.0
+    same_type = left.get("contentType") == right.get("contentType")
+    topic_overlap = bool(set(left.get("topics", [])) & set(right.get("topics", [])))
+    return (same_type or topic_overlap) and (sequence >= 0.76 or (sequence >= 0.56 and jaccard >= 0.48))
+
+
+def deduplicate_events(items: list[dict]) -> list[dict]:
+    selected: list[dict] = []
+    for item in sorted(items, key=lambda row: row.get("publishedAt", ""), reverse=True):
+        duplicate = next((kept for kept in selected if titles_refer_to_same_event(item, kept)), None)
+        if duplicate:
+            duplicate["sourceTrail"] = list(dict.fromkeys([
+                *duplicate.get("sourceTrail", []), *item.get("sourceTrail", [])
+            ]))
+            continue
+        item["eventKey"] = event_key(item) or "title:" + normalize_title(item.get("title", ""))[:80]
+        selected.append(item)
+    return selected
 
 
 def diversify(collected: list[dict], maximum: int, per_source: int) -> list[dict]:
     buckets: dict[str, list[dict]] = {}
     for item in collected:
-        buckets.setdefault(item.get("sourceName", "未知来源"), []).append(item)
+        buckets.setdefault(item.get("sourceName", "????"), []).append(item)
     queues = [
         sorted(items, key=lambda item: item.get("publishedAt", ""), reverse=True)[:per_source]
         for items in buckets.values()
@@ -364,23 +562,75 @@ def diversify(collected: list[dict], maximum: int, per_source: int) -> list[dict
     return selected
 
 
+def matches_coverage_dimension(item: dict, dimension: str) -> bool:
+    if dimension in CONTENT_TYPES:
+        return item.get("contentType") == dimension
+    return (
+        item.get("category") == dimension
+        or dimension in item.get("topics", [])
+    )
+
+
 def balance_categories(items: list[dict], maximum: int, minimums: dict[str, int]) -> list[dict]:
     ordered = sorted(items, key=lambda item: item.get("publishedAt", ""), reverse=True)
     remaining = list(ordered)
     selected: list[dict] = []
     for category, count in minimums.items():
-        matches = [item for item in remaining if item.get("category") == category][:int(count)]
+        matches = [item for item in remaining if matches_coverage_dimension(item, category)][:int(count)]
         selected.extend(matches)
         remaining = [item for item in remaining if item not in matches]
     selected.extend(remaining[:max(0, maximum - len(selected))])
     return selected[:maximum]
 
 
+def batch_has_core_coverage(batch: list[dict]) -> bool:
+    return len(batch) == BATCH_SIZE and all(
+        sum(matches_coverage_dimension(item, dimension) for item in batch) >= minimum
+        for dimension, minimum in CORE_DIMENSION_MINIMUMS.items()
+    )
+
+
+def compose_fixed_batches(items: list[dict], maximum: int) -> list[dict]:
+    """Build complete ten-item reading pages while reserving coverage for later pages."""
+    target = min(maximum, len(items)) // BATCH_SIZE * BATCH_SIZE
+    if target < MINIMUM_EDITION_ITEMS:
+        return []
+    batch_count = target // BATCH_SIZE
+    remaining = list(items)
+    output: list[dict] = []
+    for batch_index in range(batch_count):
+        batch: list[dict] = []
+        for dimension, minimum in CORE_DIMENSION_MINIMUMS.items():
+            while sum(matches_coverage_dimension(item, dimension) for item in batch) < minimum:
+                match = next((item for item in remaining if matches_coverage_dimension(item, dimension)), None)
+                if match is None:
+                    return []
+                batch.append(match)
+                remaining.remove(match)
+
+        future_batches = batch_count - batch_index - 1
+        while len(batch) < BATCH_SIZE:
+            candidate = next((item for item in remaining if all(
+                sum(matches_coverage_dimension(other, dimension) for other in remaining if other is not item)
+                >= future_batches * CORE_DIMENSION_MINIMUMS[dimension]
+                for dimension in CORE_DIMENSIONS
+                if matches_coverage_dimension(item, dimension)
+            )), None)
+            if candidate is None:
+                return []
+            batch.append(candidate)
+            remaining.remove(candidate)
+        if not batch_has_core_coverage(batch):
+            return []
+        output.extend(batch)
+    return output
+
+
 def merge(existing: list[dict], collected: list[dict], maximum: int, per_source: int, minimums: dict[str, int]) -> list[dict]:
     output: list[dict] = []
     urls: set[str] = set()
     titles: set[str] = set()
-    curated = [item for item in existing if "自动采集" not in item.get("tags", [])]
+    curated = [item for item in existing if "????" not in item.get("tags", [])]
     candidates = [*curated, *diversify(collected, maximum, per_source)]
     for item in candidates:
         url = item.get("sourceUrl", "")
@@ -390,7 +640,7 @@ def merge(existing: list[dict], collected: list[dict], maximum: int, per_source:
         urls.add(url)
         titles.add(title)
         output.append(item)
-    return balance_categories(output, maximum, minimums)
+    return balance_categories(deduplicate_events(output), maximum, minimums)
 
 
 def apply_freshness(
@@ -404,29 +654,32 @@ def apply_freshness(
         try:
             return dt.date.fromisoformat(item.get("publishedAt", ""))
         except ValueError:
-            return today
+            return dt.date(1970, 1, 1)
 
     fresh = [item for item in items if published_date(item) >= fresh_cutoff]
     supplements = [item for item in items if supplement_cutoff <= published_date(item) < fresh_cutoff]
     selected = list(fresh)
     for category, minimum in minimums.items():
-        missing = max(0, int(minimum) - sum(item.get("category") == category for item in selected))
-        additions = [item for item in supplements if item.get("category") == category and item not in selected][:missing]
+        missing = max(0, int(minimum) - sum(matches_coverage_dimension(item, category) for item in selected))
+        additions = [item for item in supplements if matches_coverage_dimension(item, category) and item not in selected][:missing]
         for item in additions:
-            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "????"] + ["????"]
         selected.extend(additions)
     if len(selected) < target:
         for item in supplements:
             if item in selected:
                 continue
-            item["tags"] = [tag for tag in item.get("tags", []) if tag != "补充阅读"] + ["补充阅读"]
+            item["tags"] = [tag for tag in item.get("tags", []) if tag != "????"] + ["????"]
             selected.append(item)
             if len(selected) >= target:
                 break
     return selected
 
 
-def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
+def enrich_with_ai(
+    items: list[dict],
+    checkpoint: Callable[[list[dict], int, int], None] | None = None,
+) -> tuple[list[dict], int]:
     """Optionally enrich entries through any OpenAI-compatible chat endpoint."""
     api_key = os.getenv("AI_API_KEY", "").strip()
     api_base = os.getenv("AI_API_BASE", "").strip().rstrip("/")
@@ -435,48 +688,50 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"title", "summary", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore"}
+    allowed = {"title", "summary", "contentType", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore", "topics"}
     enriched_count = 0
-    for start in range(0, len(items), AI_BATCH_SIZE):
-        batch = items[start:start + AI_BATCH_SIZE]
+    for start in range(0, len(items), WRITER_BATCH_SIZE):
+        batch = items[start:start + WRITER_BATCH_SIZE]
         material = [
             {
                 "id": item["id"],
                 "category": item["category"],
+                "contentType": item["contentType"],
+                "contentTypeLocked": item.get("contentTypeLocked", False),
+                "topics": item["topics"],
+                "sourceTitle": item.get("_sourceTitle") or item["title"],
                 "title": item["title"],
                 "source": item["sourceName"],
                 "publishedAt": item.get("publishedAt", ""),
-                "sourceMaterial": item.get("sourceMaterial") or {
+                "sourceMaterial": str(item.get("sourceMaterial") or {
                     "summary": item.get("summary", ""),
                     "keyFacts": item.get("keyFacts", []),
                     "context": item.get("context", ""),
-                },
+                })[:6000],
             }
             for item in batch
         ]
         prompt = (
-            "你是面向普通读者的中文 AI 科技记者。所有标题、摘要和正文必须用中文，产品名、模型名和必要术语可保留英文。"
-            "只依据给定材料，不补造事实。读者第一眼最想知道的是：它是什么、做到了什么、核心贡献是什么、怎样实现、对谁有用。"
-            "不要先写发布日期、来源、Star 数、筛选逻辑、置信度或行业套话；这些只有与贡献直接相关时才可在后文简短出现。"
-            "summary 用90-150个中文字符直接给出结论，先说做到什么和贡献，不复述标题。"
-            "briefSections 严格为5段，每段至少80个中文字符，总计500-850个中文字符，使用以下结构："
-            "重要研究=研究结论/核心贡献/方法与实验/结果意味着什么/证据边界；"
-            "开源项目=它是什么，做到了什么/核心贡献/它怎样工作/谁会用到/成熟度与限制；"
-            "大模型=这次真正带来了什么/核心能力与改进/怎样使用/对谁有影响/限制与待验证问题；"
-            "Agent=它能完成什么任务/关键贡献/它怎样行动/实际价值/可靠性与权限风险；"
-            "其他新闻=发生了什么/关键变化/事件经过/会带来什么影响/接下来要看什么。"
-            "不得把英文原文整句复制进中文正文，不得用“值得关注”“行业正在发展”等空话凑字。"
-            "另生成中文 title、keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch，避免字段间重复。"
-            "再给 technicalRelevanceScore 和 innovationScore，均为0到1；娱乐、人物花边、纯营销或只有融资信息的技术相关性必须低于0.45。"
-            "返回严格 JSON 对象，格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
+            "??????????? AI ?????????????????????????????????????????????????????"
+            "??????????contentType??????????????Agent?????????topics?????Agent????????????????Agent??????Agent???contentTypeLocked?true?????????false?????????????????????"
+            "sourceTitle???????????????????????????????????????????Codex???ChatGPT??????????????????????"
+            "???????????????????????????????title?summary??????????????Star?????????"
+            "summary?70-140?????????????????????????????"
+            "briefSections???JSON??????????3-5????500-900????????275?????????????????60???????????45?????????????????????????????????????????????????????????????????????????"
+            "??????????????????????????????????????????????????Agent????????????????????????????????????????????????????????????????"
+            "???????????????????????????????????????????????????????????????????????????????"
+            "?????keyFacts(3-5?)?context?beginnerExplainer?impact?limitations?whatToWatch???????????????????????????????"
+            "???topics?contentTypeLocked?true?????contentType??false?????????????technicalRelevanceScore?innovationScore?0?1?????????????????????????????????????0.45?"
+            "???? JSON ??????????????????? \"briefSections\":[{\"title\":\"?????\",\"body\":\"????\"}]???????????????? {\"items\":[{\"id\":..., ...}]}?\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
         payload = json.dumps({
             "model": model,
             "temperature": 0.2,
+            "max_tokens": 8000,
             "response_format": {"type": "json_object"},
             "messages": [
-                {"role": "system", "content": "输出严谨、克制、可核查的中文 JSON。"},
+                {"role": "system", "content": "?????????????? JSON?"},
                 {"role": "user", "content": prompt},
             ],
         }, ensure_ascii=False).encode("utf-8")
@@ -488,15 +743,21 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
         )
         try:
             response = None
-            for attempt in range(3):
+            for attempt in range(4):
                 try:
                     response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
                     break
                 except urllib.error.HTTPError as exc:
-                    if exc.code != 429 or attempt == 2:
+                    if exc.code != 429 or attempt == 3:
                         raise
-                    delay = 25 * (attempt + 1)
+                    delay = 8 * (attempt + 1)
                     print(f"warning: AI rate limited; retrying in {delay}s", file=sys.stderr)
+                    time.sleep(delay)
+                except (urllib.error.URLError, TimeoutError) as exc:
+                    if attempt == 3:
+                        raise
+                    delay = 4 * (attempt + 1)
+                    print(f"warning: AI writer connection failed ({exc}); retrying in {delay}s", file=sys.stderr)
                     time.sleep(delay)
             if response is None:
                 raise RuntimeError("AI enrichment returned no response")
@@ -506,15 +767,41 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             by_id = {row.get("id"): row for row in enriched if isinstance(row, dict)}
             for item in batch:
                 changed = False
-                for key, value in by_id.get(item["id"], {}).items():
+                writer_row = by_id.get(item["id"], {})
+                if "briefSections" not in writer_row:
+                    print(
+                        f"writer omitted briefSections {item['id']}: keys={sorted(writer_row.keys())}",
+                        file=sys.stderr,
+                    )
+                for key, value in writer_row.items():
                     if key == "briefSections":
-                        valid_sections = [
-                            section for section in value
-                            if isinstance(section, dict) and section.get("title") and section.get("body")
-                        ] if isinstance(value, list) else []
+                        valid_sections = []
+                        if isinstance(value, list):
+                            for section in value:
+                                if not isinstance(section, dict):
+                                    continue
+                                title = section.get("title") or section.get("????") or section.get("??")
+                                body = section.get("body") or section.get("??") or section.get("??")
+                                if title and body:
+                                    valid_sections.append({"title": str(title), "body": str(body)})
                         total_chinese = sum(chinese_char_count(section["body"]) for section in valid_sections)
-                        if len(valid_sections) == 5 and total_chinese >= 350 and all(chinese_char_count(section["body"]) >= 50 for section in valid_sections):
+                        if 3 <= len(valid_sections) <= 5 and total_chinese >= 275 and all(chinese_char_count(section["body"]) >= 45 for section in valid_sections):
                             item[key] = valid_sections
+                            changed = True
+                        else:
+                            print(
+                                f"writer incomplete {item['id']}: sections={len(valid_sections)} "
+                                f"chinese={total_chinese} raw={str(value)[:500]}",
+                                file=sys.stderr,
+                            )
+                    elif key == "contentType":
+                        if not item.get("contentTypeLocked", False) and value in CONTENT_TYPES:
+                            item[key] = value
+                            changed = True
+                    elif key == "topics" and isinstance(value, list):
+                        topics = [topic for topic in value if topic in TOPIC_ORDER]
+                        if topics:
+                            item[key] = list(dict.fromkeys(topics))[:4]
                             changed = True
                     elif key in {"technicalRelevanceScore", "innovationScore"} and isinstance(value, (int, float)):
                         item[key] = max(0.0, min(1.0, float(value)))
@@ -526,17 +813,168 @@ def enrich_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                             changed = True
                 if changed:
                     enriched_count += 1
+                item["category"] = compatibility_category(item["contentType"], item.get("topics", []))
                 item["whyItMatters"] = item.get("impact", item["whyItMatters"])
                 item["details"] = item.get("keyFacts", item["details"])
                 item["fullBrief"] = "\n\n".join(
                     f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
                 )
-                item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
-            if start + AI_BATCH_SIZE < len(items):
-                time.sleep(25)
+                item["tags"] = [tag for tag in item["tags"] if tag != "AI ??"] + ["AI ??"]
         except Exception as exc:  # noqa: BLE001
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
+        finally:
+            if checkpoint is not None:
+                checkpoint(items, enriched_count, min(start + len(batch), len(items)))
     return items, enriched_count
+
+
+def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
+    """Run a separate, fail-closed editorial review over the finished Chinese copy."""
+    api_key = os.getenv("AI_API_KEY", "").strip()
+    api_base = os.getenv("AI_API_BASE", "").strip().rstrip("/")
+    model = os.getenv("AI_REVIEW_MODEL", "").strip() or os.getenv("AI_MODEL", "").strip()
+    if not (api_key and api_base and model):
+        return [], 0
+    endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
+    passed: list[dict] = []
+    reviewed = 0
+    for start in range(0, len(items), REVIEW_BATCH_SIZE):
+        batch = items[start:start + REVIEW_BATCH_SIZE]
+        material = [{
+            "id": item["id"],
+            "sourceTitle": item.get("_sourceTitle") or item.get("title"),
+            "sourceMaterial": str(item.get("sourceMaterial", ""))[:6000],
+            "draft": {
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+                "contentType": item.get("contentType"),
+                "contentTypeLocked": item.get("contentTypeLocked", False),
+                "topics": item.get("topics"),
+                "briefSections": item.get("briefSections"),
+                "keyFacts": item.get("keyFacts"),
+                "context": item.get("context"),
+                "beginnerExplainer": item.get("beginnerExplainer"),
+                "impact": item.get("impact"),
+                "limitations": item.get("limitations"),
+                "whatToWatch": item.get("whatToWatch"),
+                "technicalRelevanceScore": item.get("technicalRelevanceScore"),
+                "innovationScore": item.get("innovationScore"),
+            },
+        } for item in batch]
+        prompt = (
+            "?????????AI????????????sourceMaterial?draft?????????????????pass?"
+            "(1)???????????????????????(2)??????????????"
+            "(3)???????????????????????????(4)contentType????????contentTypeLocked?true????????topics???"
+            "sourceTitle????????????????????????????????????GitHub?????????????????????"
+            "(5)?????3-5????????????????(6)??????????????????????????"
+            "(7)???????????????????????????????"
+            "??????technicalRelevanceScore?innovationScore?0?1??"
+            "???JSON?{\"items\":[{\"id\":\"...\",\"pass\":true,\"technicalRelevanceScore\":0.8,\"innovationScore\":0.7,\"issues\":[]}]}?\n\n"
+            + json.dumps(material, ensure_ascii=False)
+        )
+        payload = json.dumps({
+            "model": model,
+            "temperature": 0,
+            "max_tokens": 3000,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": "?????????????????????????JSON?"},
+                {"role": "user", "content": prompt},
+            ],
+        }, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": USER_AGENT},
+            method="POST",
+        )
+        try:
+            response = None
+            for attempt in range(5):
+                try:
+                    response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
+                    break
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 429 or attempt == 4:
+                        raise
+                    delay = (15, 30, 60, 90)[attempt]
+                    print(f"warning: AI reviewer rate limited; retrying in {delay}s", file=sys.stderr)
+                    time.sleep(delay)
+                except (urllib.error.URLError, TimeoutError) as exc:
+                    if attempt == 4:
+                        raise
+                    delay = 4 * (attempt + 1)
+                    print(f"warning: AI reviewer connection failed ({exc}); retrying in {delay}s", file=sys.stderr)
+                    time.sleep(delay)
+            if response is None:
+                raise RuntimeError("AI review returned no response")
+            content = response["choices"][0]["message"]["content"].strip()
+            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
+            verdicts = json.loads(content).get("items", [])
+            by_id = {row.get("id"): row for row in verdicts if isinstance(row, dict)}
+            for item in batch:
+                verdict = by_id.get(item["id"], {})
+                if not isinstance(verdict.get("pass"), bool):
+                    continue
+                reviewed += 1
+                if not verdict["pass"]:
+                    print(
+                        f"review rejected {item['id']}: {verdict.get('issues', [])}",
+                        file=sys.stderr,
+                    )
+                    continue
+                reviewer_technical = verdict.get("technicalRelevanceScore")
+                reviewer_innovation = verdict.get("innovationScore")
+                if not isinstance(reviewer_technical, (int, float)) or not isinstance(reviewer_innovation, (int, float)):
+                    continue
+                # A generous writer score cannot override a skeptical reviewer.
+                item["technicalRelevanceScore"] = min(float(item.get("technicalRelevanceScore", 0)), float(reviewer_technical))
+                item["innovationScore"] = min(float(item.get("innovationScore", 0)), float(reviewer_innovation))
+                report_issues = chinese_report_issues(item)
+                if not report_issues:
+                    passed.append(item)
+                else:
+                    print(
+                        f"local gate rejected {item['id']}: {report_issues}",
+                        file=sys.stderr,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            print(f"warning: independent AI review failed closed: {exc}", file=sys.stderr)
+    return passed, reviewed
+
+
+def atomic_write_json(path: Path, document: dict) -> None:
+    """Write a complete JSON document without exposing a partially written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def configuration_fingerprint(config_path: Path) -> str:
+    payload = config_path.read_bytes() + PIPELINE_CONTRACT_VERSION.encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def load_draft_cache(path: Path, expected_fingerprint: str, maximum_age_hours: int = 24) -> dict:
+    if not path.exists():
+        raise ValueError(f"draft cache not found: {path}")
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("pipelineContractVersion") != PIPELINE_CONTRACT_VERSION:
+        raise ValueError("draft cache pipeline contract is stale")
+    if document.get("configurationFingerprint") != expected_fingerprint:
+        raise ValueError("draft cache configuration does not match the current feed config")
+    created_value = document.get("createdAt")
+    if not isinstance(created_value, str) or not created_value.strip():
+        raise ValueError("draft cache has no creation timestamp")
+    created_at = parse_date(created_value)
+    age = dt.datetime.now(dt.timezone.utc) - created_at.astimezone(dt.timezone.utc)
+    if age > dt.timedelta(hours=maximum_age_hours) or age < -dt.timedelta(minutes=5):
+        raise ValueError(f"draft cache age is outside the allowed window: {age}")
+    items = document.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("draft cache contains no items")
+    return document
 
 
 def main() -> int:
@@ -544,61 +982,175 @@ def main() -> int:
     parser.add_argument("--config", default="Data/source-feeds.json")
     parser.add_argument("--output", default="Data/news.json")
     parser.add_argument("--drop-existing", action="store_true", help="discard previously curated entries")
+    parser.add_argument("--max-candidates", type=int, default=0, help="limit candidates for local editorial testing")
+    parser.add_argument("--reuse-draft", action="store_true", help="reuse the last enriched draft and rerun review only")
+    parser.add_argument("--repair-draft", action="store_true", help="rewrite only incomplete cached drafts, then review")
+    parser.add_argument("--draft-cache", default="", help="path for the enriched local draft cache")
+    parser.add_argument("--fail-on-preserve", action="store_true", help="return non-zero when last-known-good is preserved")
     args = parser.parse_args()
+    if args.reuse_draft and args.repair_draft:
+        parser.error("--reuse-draft and --repair-draft are mutually exclusive")
 
-    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    config_path = Path(args.config)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config_fingerprint = configuration_fingerprint(config_path)
     output_path = Path(args.output)
+    draft_path = Path(args.draft_cache) if args.draft_cache else output_path.with_suffix(".draft.json")
     current = json.loads(output_path.read_text(encoding="utf-8")) if output_path.exists() else {"items": []}
-    collected = [item for source in config["feeds"] for item in parse_feed(source)]
-    collected.extend(collect_github(config))
     minimums = {key: int(value) for key, value in config.get("categoryMinimums", {}).items()}
-    collected = apply_freshness(
-        collected,
-        int(config.get("freshHours", 72)),
-        int(config.get("supplementDays", 7)),
-        int(config.get("maxItems", 18)),
-        minimums,
-    )
-    existing = [] if args.drop_existing else current.get("items", [])
-    items = merge(
-        existing,
-        collected,
-        int(config.get("maxItems", 18)),
-        int(config.get("maxItemsPerSource", 4)),
-        minimums,
-    )
-    attach_source_material(items)
-    items, enriched_count = enrich_with_ai(items)
+    candidate_limit = args.max_candidates if args.max_candidates > 0 else int(config.get("maxItems", 18))
+    selection_minimums = {key: min(value, 2) for key, value in minimums.items()} if args.max_candidates > 0 else minimums
+    ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
+    if args.reuse_draft or args.repair_draft:
+        try:
+            draft = load_draft_cache(draft_path, config_fingerprint)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"error: cannot reuse draft cache: {exc}", file=sys.stderr)
+            return 1
+        items = draft["items"]
+        enriched_count = int(draft.get("enrichedCount", len(items)))
+        candidate_limit = int(draft.get("candidateLimit", candidate_limit))
+        print(f"reusing {len(items)} enriched items from {draft_path}", file=sys.stderr)
+        if args.repair_draft:
+            repair_targets = [
+                item for item in items
+                if chinese_report_issues(item) or not all(
+                    isinstance(item.get(name), (int, float))
+                    for name in ("technicalRelevanceScore", "innovationScore")
+                )
+            ]
+            print(f"repairing {len(repair_targets)} incomplete cached drafts", file=sys.stderr)
+            def save_repair_checkpoint(_targets: list[dict], repaired: int, processed: int) -> None:
+                draft["createdAt"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+                draft["repairProcessedCount"] = processed
+                draft["repairEnrichedCount"] = repaired
+                draft["items"] = items
+                atomic_write_json(draft_path, draft)
+
+            _, repaired_count = enrich_with_ai(repair_targets, save_repair_checkpoint)
+            enriched_count += repaired_count
+            draft["createdAt"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+            draft["enrichedCount"] = enriched_count
+            draft["items"] = items
+            atomic_write_json(draft_path, draft)
+    else:
+        collected: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(8, len(config["feeds"]) + 1)) as executor:
+            futures = [executor.submit(parse_feed, source) for source in config["feeds"]]
+            futures.append(executor.submit(collect_github, config))
+            for future in as_completed(futures):
+                collected.extend(future.result())
+        collected = [item for item in collected if not is_low_priority(item)]
+        collected = deduplicate_events(collected)
+        collected = apply_freshness(
+            collected,
+            int(config.get("freshHours", 72)),
+            int(config.get("supplementDays", 7)),
+            int(config.get("maxItems", 18)),
+            minimums,
+        )
+        existing = [] if args.drop_existing or int(current.get("schemaVersion", 1)) < SCHEMA_VERSION else current.get("items", [])
+        items = merge(
+            existing,
+            collected,
+            candidate_limit,
+            int(config.get("maxItemsPerSource", 4)),
+            selection_minimums,
+        )
+        for item in items:
+            item["_sourceTitle"] = item.get("_sourceTitle") or item.get("title", "")
+        attach_source_material(items)
+        draft_document = {
+            "schemaVersion": SCHEMA_VERSION,
+            "pipelineContractVersion": PIPELINE_CONTRACT_VERSION,
+            "configurationFingerprint": config_fingerprint,
+            "createdAt": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+            "candidateLimit": candidate_limit,
+            "enrichedCount": 0,
+            "writerProcessedCount": 0,
+            "items": items,
+        }
+
+        def save_writer_checkpoint(current_items: list[dict], enriched: int, processed: int) -> None:
+            draft_document["createdAt"] = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+            draft_document["enrichedCount"] = enriched
+            draft_document["writerProcessedCount"] = processed
+            draft_document["items"] = current_items
+            atomic_write_json(draft_path, draft_document)
+
+        items, enriched_count = enrich_with_ai(items, save_writer_checkpoint if ai_requested else None)
+        if ai_requested:
+            draft_document["enrichedCount"] = enriched_count
+            draft_document["writerProcessedCount"] = len(items)
+            draft_document["items"] = items
+            atomic_write_json(draft_path, draft_document)
+            print(f"saved enriched draft to {draft_path}", file=sys.stderr)
+    if ai_requested:
+        submitted_count = len(items)
+        writer_ready: list[dict] = []
+        for item in items:
+            issues = chinese_report_issues(item)
+            scores_valid = all(
+                isinstance(item.get(name), (int, float))
+                for name in ("technicalRelevanceScore", "innovationScore")
+            )
+            if not issues and scores_valid:
+                writer_ready.append(item)
+            else:
+                if not scores_valid:
+                    issues.append("??????")
+                print(f"writer gate rejected {item.get('id')}: {issues}", file=sys.stderr)
+        items = writer_ready
+        writer_ready_count = len(items)
+        cooldown = max(0, int(os.getenv("AI_REVIEW_COOLDOWN_SECONDS", "30")))
+        if items and cooldown:
+            print(f"waiting {cooldown}s before independent review", file=sys.stderr)
+            time.sleep(cooldown)
+        items, reviewed_count = review_with_ai(items)
+        items = [item for item in deduplicate_events(items) if (
+            is_chinese_report(item)
+            and not is_low_priority(item)
+            and isinstance(item.get("technicalRelevanceScore"), (int, float))
+            and isinstance(item.get("innovationScore"), (int, float))
+            and float(item["technicalRelevanceScore"]) >= 0.55
+            and float(item["innovationScore"]) >= 0.35
+        )]
+        items = balance_categories(items, candidate_limit, selection_minimums)
+        items = compose_fixed_batches(items, candidate_limit)
+        core_coverage_ok = bool(items) and all(
+            batch_has_core_coverage(items[start:start + BATCH_SIZE])
+            for start in range(0, len(items), BATCH_SIZE)
+        )
+        coverage_counts = {
+            "???": sum("???" in item.get("topics", []) for item in items),
+            "Agent": sum("Agent" in item.get("topics", []) for item in items),
+            "??": sum(item.get("contentType") == "??" for item in items),
+            "????": sum(item.get("contentType") == "????" for item in items),
+        }
+        print(
+            f"editorial audit: submitted={submitted_count} enriched={enriched_count} writer_ready={writer_ready_count} "
+            f"reviewed={reviewed_count} passed={len(items)} coverage={coverage_counts}",
+            file=sys.stderr,
+        )
+        if len(items) < MINIMUM_EDITION_ITEMS or len(items) % BATCH_SIZE or not core_coverage_ok:
+            print("warning: Chinese technical edition did not meet coverage; preserving the previous edition", file=sys.stderr)
+            return 1 if args.fail_on_preserve or not current.get("items") else 0
+    else:
+        print("warning: no AI editorial service; preserving the previous Chinese edition", file=sys.stderr)
+        return 1 if args.fail_on_preserve or not current.get("items") else 0
     for item in items:
+        item.pop("_sourceTitle", None)
         item.pop("sourceMaterial", None)
         item.pop("defaultBranch", None)
-    ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
-    if ai_requested:
-        items = [
-            item for item in items
-            if is_chinese_report(item)
-            and float(item.get("technicalRelevanceScore", 0.75)) >= 0.55
-            and float(item.get("innovationScore", 0.60)) >= 0.35
-        ]
-        items = balance_categories(items, int(config.get("maxItems", 30)), minimums)
-        core_coverage_ok = all(
-            sum(item.get("category") == category for item in items) >= 2
-            for category in ("大模型", "Agent", "重要研究", "开源项目")
-        )
-        if (len(items) < 10 or not core_coverage_ok) and current.get("items"):
-            print("warning: Chinese technical edition did not meet coverage; preserving the previous edition", file=sys.stderr)
-            return 0
-    if ai_requested and enriched_count < max(1, len(items) // 2) and current.get("items"):
-        print("warning: Chinese editorial enrichment was incomplete; preserving the previous edition", file=sys.stderr)
-        return 0
+        item.pop("contentTypeLocked", None)
     edition = {
-        "schemaVersion": 1,
+        "schemaVersion": SCHEMA_VERSION,
         "editionDate": dt.date.today().isoformat(),
         "windowHours": 72,
         "generatedAt": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "items": items,
     }
-    output_path.write_text(json.dumps(edition, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_json(output_path, edition)
     print(f"wrote {len(items)} items to {output_path}")
     return 0
 

@@ -3,6 +3,7 @@ using AIFrontier.Services;
 using AIFrontier.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace AIFrontier;
 
@@ -10,6 +11,8 @@ public sealed partial class MainPage : Page
 {
     private bool _isCompact;
     private bool _compactDetailVisible;
+    private bool _isPreferenceVisible;
+    private bool _suppressRatingFeedback;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMinutes(10) };
     private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
 
@@ -21,6 +24,13 @@ public sealed partial class MainPage : Page
         DataContext = ViewModel;
         ViewModel.Items.CollectionChanged += (_, _) =>
             EmptyState.Visibility = ViewModel.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(ViewModel.SelectedItem) or nameof(ViewModel.SelectedRatingValue))
+            {
+                RestoreRatingFromViewModel();
+            }
+        };
         _refreshTimer.Tick += async (_, _) => await RefreshNewsAsync(false);
         _updateTimer.Tick += async (_, _) => await CheckForUpdatesAndPromptAsync(false);
     }
@@ -38,7 +48,7 @@ public sealed partial class MainPage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.FeedbackMessage = $"读取新闻失败：{ex.Message}";
+            ViewModel.FeedbackMessage = $"???????{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
             ViewModel.EditionLabel = ViewModel.FeedbackMessage;
             var logRoot = Path.Combine(
@@ -51,12 +61,25 @@ public sealed partial class MainPage : Page
 
     private async Task RefreshNewsAsync(bool showMessage)
     {
-        await ViewModel.LoadAsync();
-        NewsList.SelectedItem = ViewModel.SelectedItem;
-        if (showMessage)
+        SetBusy(RefreshButton, RefreshProgressRing, true);
+        try
         {
-            ViewModel.FeedbackMessage = "已读取 D 盘最新简报";
-            ViewModel.IsFeedbackMessageOpen = true;
+            var reading = ViewModel.SelectedItem;
+            await ViewModel.LoadAsync();
+            if (reading is not null && ViewModel.Items.All(item => item.Id != reading.Id))
+            {
+                ViewModel.SelectedItem = reading;
+            }
+            NewsList.SelectedItem = ViewModel.SelectedItem;
+            if (showMessage)
+            {
+                ViewModel.FeedbackMessage = "???";
+                ViewModel.IsFeedbackMessageOpen = true;
+            }
+        }
+        finally
+        {
+            SetBusy(RefreshButton, RefreshProgressRing, false);
         }
     }
 
@@ -68,13 +91,16 @@ public sealed partial class MainPage : Page
         }
         catch (Exception ex)
         {
-            ViewModel.FeedbackMessage = $"刷新失败：{ex.Message}";
+            ViewModel.FeedbackMessage = $"?????{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
         }
     }
 
-    private void NextBatchButton_Click(object sender, RoutedEventArgs e) =>
+    private void NextBatchButton_Click(object sender, RoutedEventArgs e)
+    {
         ViewModel.NextBatch();
+        ResetReadingPosition();
+    }
 
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateResponsiveLayout(e.NewSize.Width);
@@ -89,6 +115,19 @@ public sealed partial class MainPage : Page
 
         if (_isCompact)
         {
+            FeedHeader.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Auto);
+            Grid.SetRow(HeaderCommands, 1);
+            Grid.SetColumn(HeaderCommands, 0);
+            Grid.SetColumnSpan(HeaderCommands, 2);
+            HeaderCommands.HorizontalAlignment = HorizontalAlignment.Left;
+            HeaderCommands.Margin = new Thickness(0, 2, 0, 0);
+            EditionText.Visibility = width < 560 ? Visibility.Collapsed : Visibility.Visible;
+            BatchText.Visibility = width < 560 ? Visibility.Collapsed : Visibility.Visible;
+            ReadingActions.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Auto);
+            Grid.SetRow(OpenSourceButton, 1);
+            Grid.SetColumn(OpenSourceButton, 0);
+            Grid.SetColumnSpan(OpenSourceButton, 2);
+            OpenSourceButton.Margin = new Thickness(0, 10, 0, 0);
             FeedColumn.Width = _compactDetailVisible ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
             DetailColumn.Width = _compactDetailVisible ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             FeedPane.Visibility = _compactDetailVisible ? Visibility.Collapsed : Visibility.Visible;
@@ -97,12 +136,32 @@ public sealed partial class MainPage : Page
         }
         else
         {
+            FeedHeader.RowDefinitions[1].Height = new GridLength(0);
+            Grid.SetRow(HeaderCommands, 0);
+            Grid.SetColumn(HeaderCommands, 1);
+            Grid.SetColumnSpan(HeaderCommands, 1);
+            HeaderCommands.HorizontalAlignment = HorizontalAlignment.Right;
+            HeaderCommands.Margin = new Thickness(0);
+            EditionText.Visibility = Visibility.Visible;
+            BatchText.Visibility = Visibility.Visible;
+            ReadingActions.RowDefinitions[1].Height = new GridLength(0);
+            Grid.SetRow(OpenSourceButton, 0);
+            Grid.SetColumn(OpenSourceButton, 1);
+            Grid.SetColumnSpan(OpenSourceButton, 1);
+            OpenSourceButton.Margin = new Thickness(0);
             _compactDetailVisible = false;
             FeedColumn.Width = new GridLength(1, GridUnitType.Star);
-            DetailColumn.Width = new GridLength(440);
+            DetailColumn.Width = new GridLength(Math.Clamp(width * 0.48, 460, 800));
             FeedPane.Visibility = Visibility.Visible;
             DetailPane.Visibility = Visibility.Visible;
             CompactBackButton.Visibility = Visibility.Collapsed;
+        }
+
+        PreferencePane.Visibility = _isPreferenceVisible ? Visibility.Visible : Visibility.Collapsed;
+        if (_isPreferenceVisible)
+        {
+            FeedPane.Visibility = Visibility.Collapsed;
+            DetailPane.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -116,31 +175,40 @@ public sealed partial class MainPage : Page
         await ShowDetailAsync(item);
     }
 
-    private async void CardDetailButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: NewsItem item })
-        {
-            await ShowDetailAsync(item);
-        }
-    }
-
     private async Task ShowDetailAsync(NewsItem item)
     {
         await ViewModel.SelectAsync(item);
         NewsList.SelectedItem = item;
-        PreferenceRating.Value = 0;
         DetailScrollViewer.ChangeView(null, 0, null, true);
         if (_isCompact)
         {
             _compactDetailVisible = true;
             UpdateResponsiveLayout(ActualWidth);
+            CompactBackButton.Focus(FocusState.Programmatic);
         }
     }
 
     private void CompactBackButton_Click(object sender, RoutedEventArgs e)
     {
+        CloseCompactDetail();
+    }
+
+    private void BackKeyboardAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (!_isCompact || !_compactDetailVisible || _isPreferenceVisible)
+        {
+            return;
+        }
+
+        CloseCompactDetail();
+        args.Handled = true;
+    }
+
+    private void CloseCompactDetail()
+    {
         _compactDetailVisible = false;
         UpdateResponsiveLayout(ActualWidth);
+        NewsList.Focus(FocusState.Programmatic);
     }
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -150,23 +218,23 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        var preferenceSelected = tag == "偏好";
-        PreferencePane.Visibility = preferenceSelected ? Visibility.Visible : Visibility.Collapsed;
-        FeedPane.Visibility = preferenceSelected ? Visibility.Collapsed : Visibility.Visible;
-        DetailPane.Visibility = preferenceSelected ? Visibility.Collapsed : (_isCompact ? Visibility.Collapsed : Visibility.Visible);
+        var preferenceSelected = tag == "??";
+        _isPreferenceVisible = preferenceSelected;
+        UpdateResponsiveLayout(ActualWidth);
         if (preferenceSelected)
         {
             return;
         }
 
-        ViewModel.SetCategory(tag == "收藏" ? "全部" : tag, tag == "收藏");
+        ViewModel.SetCategory(tag == "??" ? "??" : tag, tag == "??");
+        ResetReadingPosition();
         _compactDetailVisible = false;
         UpdateResponsiveLayout(ActualWidth);
     }
 
     private async void FeedbackButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: string action })
+        if (sender is FrameworkElement { Tag: string action })
         {
             await ViewModel.RecordFeedbackAsync(action);
         }
@@ -174,9 +242,11 @@ public sealed partial class MainPage : Page
 
     private async void PreferenceRating_ValueChanged(RatingControl sender, object args)
     {
-        if (sender.Value > 0 && ViewModel.SelectedItem is not null)
+        if (!_suppressRatingFeedback && ViewModel.SelectedItem is not null)
         {
-            await ViewModel.RecordFeedbackAsync("rating", sender.Value);
+            await ViewModel.RecordFeedbackAsync(
+                sender.Value > 0 ? "rating" : "rating-clear",
+                sender.Value > 0 ? sender.Value : null);
         }
     }
 
@@ -185,32 +255,52 @@ public sealed partial class MainPage : Page
 
     private async void ConnectCodexButton_Click(object sender, RoutedEventArgs e)
     {
+        SetBusy(ConnectCodexButton, ConnectCodexProgressRing, true);
         try
         {
             await ViewModel.ConnectCodexAsync();
         }
         catch (Exception exception)
         {
-            ViewModel.FeedbackMessage = $"接入 Codex 失败：{exception.Message}";
+            ViewModel.FeedbackMessage = $"?? Codex ???{exception.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
+        }
+        finally
+        {
+            SetBusy(ConnectCodexButton, ConnectCodexProgressRing, false);
         }
     }
 
     private async void AnalyzeWithCodexButton_Click(object sender, RoutedEventArgs e)
     {
+        SetBusy(AnalyzeWithCodexButton, CodexProgressRing, true);
         try
         {
             await ViewModel.AnalyzeWithCodexAsync();
         }
         catch (Exception exception)
         {
-            ViewModel.FeedbackMessage = $"打开 Codex 分析失败：{exception.Message}";
+            ViewModel.FeedbackMessage = $"?? Codex ?????{exception.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
+        }
+        finally
+        {
+            SetBusy(AnalyzeWithCodexButton, CodexProgressRing, false);
         }
     }
 
-    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) =>
-        await CheckForUpdatesAndPromptAsync(true);
+    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetBusy(CheckUpdatesButton, UpdateProgressRing, true);
+        try
+        {
+            await CheckForUpdatesAndPromptAsync(true);
+        }
+        finally
+        {
+            SetBusy(CheckUpdatesButton, UpdateProgressRing, false);
+        }
+    }
 
     private async void ResetUpdatePromptsButton_Click(object sender, RoutedEventArgs e) =>
         await ViewModel.ResetUpdatePromptsAsync();
@@ -241,21 +331,21 @@ public sealed partial class MainPage : Page
 
         var choices = new ComboBox
         {
-            Header = "这次怎么处理？",
+            Header = "???????",
             HorizontalAlignment = HorizontalAlignment.Stretch,
             SelectedIndex = 0,
             ItemsSource = new[]
             {
-                "立即更新（只更新这一次）",
-                "接受并开启自动更新",
-                $"本版本不需要（跳过 {update.LatestVersion}）",
-                "不要再提示更新"
+                "????????????",
+                "?????????",
+                $"????????? {update.LatestVersion}?",
+                "???????"
             }
         };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock
         {
-            Text = $"当前版本：{update.CurrentVersion}\n最新版本：{update.LatestVersion}\n更新来自项目固定 GitHub Releases，并在安装前校验 SHA-256。",
+            Text = $"?????{update.CurrentVersion}\n?????{update.LatestVersion}\n???????? GitHub Releases???????? SHA-256?",
             TextWrapping = TextWrapping.Wrap
         });
         content.Children.Add(choices);
@@ -263,10 +353,10 @@ public sealed partial class MainPage : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "发现 AI Frontier 新版本",
+            Title = "?? AI Frontier ???",
             Content = content,
-            PrimaryButtonText = "确认",
-            CloseButtonText = "稍后",
+            PrimaryButtonText = "??",
+            CloseButtonText = "??",
             DefaultButton = ContentDialogButton.Primary
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
@@ -282,5 +372,34 @@ public sealed partial class MainPage : Page
             _ => UpdateChoice.InstallNow
         };
         await ViewModel.ApplyUpdateChoiceAsync(update, choice);
+    }
+
+    private void ResetReadingPosition()
+    {
+        DetailScrollViewer.ChangeView(null, 0, null, true);
+        if (ViewModel.Items.FirstOrDefault() is { } first)
+        {
+            NewsList.ScrollIntoView(first, ScrollIntoViewAlignment.Leading);
+        }
+    }
+
+    private void RestoreRatingFromViewModel()
+    {
+        _suppressRatingFeedback = true;
+        try
+        {
+            PreferenceRating.Value = ViewModel.SelectedRatingValue;
+        }
+        finally
+        {
+            _suppressRatingFeedback = false;
+        }
+    }
+
+    private static void SetBusy(Control control, ProgressRing ring, bool isBusy)
+    {
+        control.IsEnabled = !isBusy;
+        ring.IsActive = isBusy;
+        ring.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
     }
 }
