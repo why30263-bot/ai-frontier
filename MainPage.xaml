@@ -11,6 +11,11 @@
     SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
 
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Escape" Invoked="BackKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Left" Modifiers="Menu" Invoked="BackKeyboardAccelerator_Invoked" />
+    </Page.KeyboardAccelerators>
+
     <NavigationView
         x:Name="ShellNavigation"
         IsBackButtonVisible="Collapsed"
@@ -24,9 +29,6 @@
         <NavigationView.MenuItems>
             <NavigationViewItem Content="今日" Tag="全部" IsSelected="True">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
-            </NavigationViewItem>
-            <NavigationViewItem Content="三日热榜" Tag="三日热榜">
-                <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem Content="为你推荐" Tag="为你推荐">
                 <NavigationViewItem.Icon><FontIcon Glyph="&#xE8D4;" /></NavigationViewItem.Icon>
@@ -68,22 +70,28 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Grid Margin="4,0,4,12">
+                    <Grid x:Name="FeedHeader" Margin="4,0,4,12" RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="0" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="4">
                             <TextBlock Text="AI 前沿" Style="{StaticResource TitleTextBlockStyle}" />
-                            <TextBlock Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="EditionText" Text="{x:Bind ViewModel.EditionLabel, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel x:Name="HeaderCommands" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock x:Name="BatchText" Text="{x:Bind ViewModel.BatchLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <Button Content="换一批" Click="NextBatchButton_Click" AutomationProperties.Name="换一批资讯" />
-                            <Button Content="刷新" Click="RefreshButton_Click" AutomationProperties.Name="刷新新闻" />
-                            <Border Padding="10,6" CornerRadius="6" Background="{ThemeResource AccentFillColorSecondaryBrush}">
-                                <TextBlock Text="今日已更新" FontWeight="SemiBold" />
-                            </Border>
+                            <Button x:Name="RefreshButton" Click="RefreshButton_Click" AutomationProperties.Name="刷新新闻">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ProgressRing x:Name="RefreshProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
+                                    <TextBlock Text="刷新" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Grid>
 
@@ -120,32 +128,25 @@
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="models:NewsItem">
-                                    <Grid MinHeight="152" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <Grid MinHeight="120" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" AutomationProperties.Name="{x:Bind AccessibleTitle}">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="176" />
+                                            <ColumnDefinition Width="112" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
 
-                                        <Border Margin="10" Background="{x:Bind BrandBrush}" CornerRadius="12">
+                                        <Border Margin="8" Background="{x:Bind BrandBrush}" CornerRadius="10">
                                             <Grid>
-                                                <Ellipse Width="92" Height="92" Fill="#20FFFFFF" />
-                                                <Image Source="{x:Bind LogoSource}" Width="58" Height="58" Stretch="Uniform" AutomationProperties.Name="{x:Bind Brand}" />
-                                                <TextBlock Text="{x:Bind Brand}" Margin="12" VerticalAlignment="Bottom" HorizontalAlignment="Center" Foreground="White" FontWeight="SemiBold" />
+                                                <Ellipse Width="64" Height="64" Fill="#20FFFFFF" />
+                                                <Image Source="{x:Bind LogoSource}" Width="42" Height="42" Stretch="Uniform" IsHitTestVisible="False" />
+                                                <TextBlock Text="{x:Bind Brand}" Margin="8" VerticalAlignment="Bottom" HorizontalAlignment="Center" Foreground="White" FontSize="12" FontWeight="SemiBold" MaxLines="1" />
                                             </Grid>
                                         </Border>
 
-                                        <StackPanel Grid.Column="1" Padding="10,14,18,14" Spacing="7">
-                                            <TextBlock Text="{x:Bind Category}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
-                                            <TextBlock Text="{x:Bind Summary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
-                                            <Grid ColumnSpacing="8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{x:Bind ReadingMeta}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" VerticalAlignment="Center" />
-                                                <Button Grid.Column="1" Content="查看详情" Click="CardDetailButton_Click" Padding="10,4" AutomationProperties.Name="查看资讯详情" />
-                                            </Grid>
+                                        <StackPanel Grid.Column="1" Padding="8,10,14,10" Spacing="4">
+                                            <TextBlock Text="{x:Bind ContentLabel}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="12" FontWeight="SemiBold" />
+                                            <TextBlock Text="{x:Bind Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
+                                            <TextBlock Text="{x:Bind Summary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" FontSize="13" />
+                                            <TextBlock Text="{x:Bind ReadingMeta}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -168,73 +169,42 @@
                     BorderThickness="1"
                     CornerRadius="18">
                     <Grid>
-                        <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto">
-                            <StackPanel Padding="20" Spacing="16">
+                        <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Center">
+                            <StackPanel MaxWidth="800" HorizontalAlignment="Center" Padding="24" Spacing="16">
                                 <Button x:Name="CompactBackButton" Content="← 返回新闻流" Click="CompactBackButton_Click" Visibility="Collapsed" HorizontalAlignment="Left" />
 
-                                <Border Height="120" Background="{Binding SelectedItem.BrandBrush}" CornerRadius="14">
-                                    <Grid>
-                                        <Ellipse Width="86" Height="86" Fill="#20FFFFFF" />
-                                        <Image Source="{Binding SelectedItem.LogoSource}" Width="52" Height="52" Stretch="Uniform" />
-                                        <StackPanel Margin="16" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="8">
-                                            <Border Background="#CC000000" Padding="8,4" CornerRadius="5">
-                                                <TextBlock Text="{Binding SelectedItem.Category}" Foreground="White" FontWeight="SemiBold" />
-                                            </Border>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedItem.ContentLabel}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level1" />
                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="17" TextWrapping="Wrap" LineHeight="27" />
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.BriefSections}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:BriefSection">
                                             <StackPanel Margin="0,0,0,18" Spacing="7">
-                                                <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                <TextBlock Text="{x:Bind Title}" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2" />
                                                 <TextBlock Text="{x:Bind Body}" FontSize="16" TextWrapping="Wrap" LineHeight="28" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                                <TextBlock Text="关键信息" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <ItemsControl ItemsSource="{Binding SelectedItem.KeyFacts}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,0,0,12" ColumnSpacing="10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <FontIcon Glyph="&#xE73E;" FontSize="10" Foreground="{ThemeResource AccentFillColorDefaultBrush}" Margin="2,6,0,0" />
-                                                <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" LineHeight="25" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="报道边界" Message="{Binding SelectedItem.Limitations}" />
-
-                                <TextBlock Text="原始来源" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <ItemsControl ItemsSource="{Binding SelectedItem.SourceTrail}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,6" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <Grid ColumnSpacing="10">
+                                <Grid x:Name="ReadingActions" ColumnSpacing="10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="0" />
+                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Button Content="使用 Codex 深度分析" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读" />
-                                    <Button Grid.Column="1" Content="打开原始网站 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开原始来源" />
+                                    <Button x:Name="AnalyzeWithCodexButton" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <ProgressRing x:Name="CodexProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
+                                            <TextBlock Text="使用 Codex 深度分析" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="OpenSourceButton" Grid.Column="1" Content="打开原始网站 ↗" Click="OpenSourceButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="使用系统默认外部浏览器打开原始来源" />
                                 </Grid>
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
@@ -242,17 +212,18 @@
                                     <TextBlock Text="读完后，这条内容对你有用吗？" Style="{StaticResource SubtitleTextBlockStyle}" />
                                     <RatingControl x:Name="PreferenceRating" MaxRating="5" ValueChanged="PreferenceRating_ValueChanged" AutomationProperties.Name="新闻喜好程度" />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="喜欢" Tag="like" Click="FeedbackButton_Click" AutomationProperties.Name="喜欢这条新闻" />
-                                        <Button Content="不感兴趣" Tag="dislike" Click="FeedbackButton_Click" AutomationProperties.Name="不感兴趣" />
-                                        <Button Content="收藏" Tag="bookmark" Click="FeedbackButton_Click" AutomationProperties.Name="收藏新闻" />
+                                        <ToggleButton Content="喜欢" Tag="like" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedLiked, Mode=OneWay}" AutomationProperties.Name="喜欢这条新闻" />
+                                        <ToggleButton Content="不感兴趣" Tag="dislike" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedDisliked, Mode=OneWay}" AutomationProperties.Name="不感兴趣" />
+                                        <ToggleButton Content="收藏" Tag="bookmark" Click="FeedbackButton_Click" IsChecked="{x:Bind ViewModel.IsSelectedBookmarked, Mode=OneWay}" AutomationProperties.Name="收藏新闻" />
                                     </StackPanel>
-                                    <Button Content="减少此类内容" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" />
+                                    <ToggleButton Content="减少此类内容" Tag="less-topic" Click="FeedbackButton_Click" HorizontalAlignment="Left" IsChecked="{x:Bind ViewModel.IsSelectedLessTopic, Mode=OneWay}" AutomationProperties.Name="减少或恢复此类内容" />
                                 </StackPanel>
 
                                 <InfoBar
                                     IsOpen="{x:Bind ViewModel.IsFeedbackMessageOpen, Mode=TwoWay}"
                                     IsClosable="True"
                                     Severity="Success"
+                                    AutomationProperties.LiveSetting="Polite"
                                     Message="{x:Bind ViewModel.FeedbackMessage, Mode=OneWay}" />
                             </StackPanel>
                         </ScrollViewer>
@@ -275,14 +246,24 @@
                         <TextBlock Text="本机 Codex 辅助阅读" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.CodexStatus, Mode=OneWay}" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="接入本机 Codex" Click="ConnectCodexButton_Click" />
+                            <Button x:Name="ConnectCodexButton" Click="ConnectCodexButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <ProgressRing x:Name="ConnectCodexProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
+                                    <TextBlock Text="接入本机 Codex" />
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Text="版本更新" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="立即检查更新" Click="CheckUpdatesButton_Click" />
+                            <Button x:Name="CheckUpdatesButton" Click="CheckUpdatesButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <ProgressRing x:Name="UpdateProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
+                                    <TextBlock Text="立即检查更新" />
+                                </StackPanel>
+                            </Button>
                             <Button Content="恢复更新提醒" Click="ResetUpdatePromptsButton_Click" />
                         </StackPanel>
                     </StackPanel>
