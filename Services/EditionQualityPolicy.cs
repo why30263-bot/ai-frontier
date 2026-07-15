@@ -37,8 +37,7 @@ public sealed class EditionQualityPolicy
         if (edition is null ||
             edition.SchemaVersion != QualifiedSchemaVersion ||
             edition.Items is null ||
-            edition.Items.Count < MinimumVisibleItems ||
-            edition.Items.Count % BatchSize != 0)
+            edition.Items.Count < MinimumVisibleItems)
         {
             return false;
         }
@@ -61,11 +60,9 @@ public sealed class EditionQualityPolicy
             return false;
         }
 
-        // A main-feed page is a publishing unit, not an accidental slice of a pool.
-        // Validate every page so “换一批” can never degrade into a weak remainder.
-        return edition.Items
-            .Chunk(BatchSize)
-            .All(HasRequiredBatchCoverage);
+        // Pool size and category balancing are ranking concerns. The publishing
+        // boundary only requires every persisted article to be independently sound.
+        return true;
     }
 
     public NewsEdition? ChooseNewest(params NewsEdition?[] editions) =>
@@ -83,7 +80,7 @@ public sealed class EditionQualityPolicy
         Items = []
     };
 
-    private static bool IsQualifiedItem(NewsItem? item)
+    public static bool IsQualifiedItem(NewsItem? item)
     {
         if (item is null ||
             string.IsNullOrWhiteSpace(item.Id) ||
@@ -124,16 +121,6 @@ public sealed class EditionQualityPolicy
     private static bool IsBannedReaderHeading(string title) =>
         BannedReaderHeadings.Any(heading =>
             title.Contains(heading, StringComparison.OrdinalIgnoreCase));
-
-    private static bool HasRequiredBatchCoverage(IEnumerable<NewsItem> batch)
-    {
-        var items = batch.ToList();
-        return items.Count == BatchSize &&
-            items.Count(item => item.Topics.Contains("大模型")) >= 2 &&
-            items.Count(item => item.Topics.Contains("Agent")) >= 2 &&
-            items.Any(item => item.ContentType == "论文") &&
-            items.Any(item => item.ContentType == "开源项目");
-    }
 
     private static bool HasChineseLead(string? value)
     {

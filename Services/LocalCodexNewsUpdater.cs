@@ -4,9 +4,8 @@ using AIFrontier.Models;
 namespace AIFrontier.Services;
 
 /// <summary>
-/// Runs the same collect - select - rewrite - validate boundary as the cloud workflow,
-/// but uses the signed-in local Codex process. The process is hosted over stdio with
-/// CreateNoWindow, so no terminal or Codex window is shown.
+/// Builds a hidden ready-news buffer one article at a time. Each completed item
+/// is validated and persisted immediately, so later timeouts cannot discard it.
 /// </summary>
 public sealed class LocalCodexNewsUpdater
 {
@@ -18,20 +17,26 @@ public sealed class LocalCodexNewsUpdater
     };
 
     private readonly BuiltInCollectorService _collector = new();
-    private readonly EditionQualityPolicy _policy = new();
 
     public async Task<LocalCodexUpdateResult> UpdateAsync(
         NewsEdition currentEdition,
+        IReadOnlyList<NewsItem> alreadyReady,
+        int targetReadyCount,
+        Func<NewsItem, CancellationToken, Task<ReadyNewsMutationResult>> saveReadyItem,
         Action<string>? reportStatus = null,
         CancellationToken cancellationToken = default)
     {
         var executable = CodexIntegrationService.FindCodexExecutable();
         if (string.IsNullOrWhiteSpace(executable))
         {
-            return new(false, false, false, null, "未检测到已安装并登录的本机 Codex。");
+            return new(false, false, 0, alreadyReady.Count, "未检测到已安装并登录的本机 Codex。");
+        }
+        if (alreadyReady.Count >= targetReadyCount)
+        {
+            return new(true, true, 0, alreadyReady.Count, $"已有 {alreadyReady.Count} 篇最新资讯就绪");
         }
 
-        reportStatus?.Invoke("正在采集论文、模型、Agent 与开源项目…");
+        reportStatus?.Invoke($"后台资讯池已有 {alreadyReady.Count} 篇 · 正在采集新来源…");
         var configuration = await CloudFeedHealthService.LoadConfigurationAsync(cancellationToken);
         IReadOnlyList<NewsItem> candidates;
         try
@@ -44,22 +49,17 @@ public sealed class LocalCodexNewsUpdater
         }
         catch
         {
-            return new(false, true, false, null, "本机 Codex 已连接，但资讯源采集暂时失败。");
+            return new(false, true, 0, alreadyReady.Count, "资讯源采集暂时失败，后台已就绪内容不受影响。");
         }
 
-        var currentUrls = currentEdition.Items
-            .Select(item => NormalizeUrl(item.SourceUrl))
-            .Where(url => url.Length > 0)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var selectedCandidates = candidates
-            .Where(item => !string.IsNullOrWhiteSpace(item.SourceUrl))
-            .Where(item => !currentUrls.Contains(NormalizeUrl(item.SourceUrl)))
-            .DistinctBy(item => NormalizeUrl(item.SourceUrl), StringComparer.OrdinalIgnoreCase)
-            .Take(8)
-            .ToList();
+        var selectedCandidates = SelectUnseenCandidates(
+            currentEdition,
+            alreadyReady,
+            candidates,
+            Math.Max(12, targetReadyCount + 4));
         if (selectedCandidates.Count == 0)
         {
-            return new(true, true, false, currentEdition, "已检查，暂时没有新的合格资讯");
+            return new(true, true, 0, alreadyReady.Count, $"已有 {alreadyReady.Count} 篇最新资讯就绪 · 暂无更多新候选");
         }
 
         var workspace = Path.Combine(
@@ -67,98 +67,213 @@ public sealed class LocalCodexNewsUpdater
             "AIFrontier",
             "local-update-workspace");
         Directory.CreateDirectory(workspace);
-        reportStatus?.Invoke($"已采集 {candidates.Count} 条候选 · 正在连接本机 Codex…");
-
         const string instructions = """
-            你是 AI Frontier 的本地中文资讯编辑。你的任务是把候选资料整理成可靠、易读的 AI 前沿简报 JSON。
-            只返回 JSON，不要 Markdown，不要解释，不要声明，不要求用户核实，不执行文件修改。
+            你是 AI Frontier 的本地中文科技记者。每次只处理一条给定来源，写成结构化中文资讯。
+            不编造来源、日期、数字或结论。只返回 JSON，不要 Markdown、解释、声明或文件操作。
             """;
-        await using var codex = new CodexChatService(executable, workspace, instructions);
+        await using var codex = new CodexChatService(
+            executable,
+            workspace,
+            instructions,
+            turnTimeout: TimeSpan.FromSeconds(75));
         var initialized = await codex.InitializeAsync(cancellationToken);
         if (!initialized.Success)
         {
-            return new(false, false, false, null, initialized.Status);
+            return new(false, false, 0, alreadyReady.Count, initialized.Status);
         }
 
-        var prompt = BuildPrompt(currentEdition, selectedCandidates);
-        reportStatus?.Invoke($"已连接 Codex · 正在筛选并撰写 {selectedCandidates.Count} 条候选…");
-        var answer = await codex.SendMessageResultAsync(prompt, cancellationToken: cancellationToken);
-        if (!answer.Success)
+        var readyCount = alreadyReady.Count;
+        var completedThisRun = 0;
+        var failedThisRun = 0;
+        for (var index = 0; index < selectedCandidates.Count; index++)
         {
-            return new(false, true, false, null, answer.Status);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (readyCount >= targetReadyCount)
+            {
+                break;
+            }
+            var candidate = selectedCandidates[index];
+            reportStatus?.Invoke($"已有 {readyCount} 篇就绪 · 正在准备第 {index + 1}/{selectedCandidates.Count} 篇");
+
+            var receivedCharacters = 0;
+            using var heartbeatCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var startedAt = DateTimeOffset.Now;
+            var heartbeat = ReportHeartbeatAsync(
+                () => Volatile.Read(ref receivedCharacters),
+                startedAt,
+                readyCount,
+                index + 1,
+                selectedCandidates.Count,
+                reportStatus,
+                heartbeatCancellation.Token);
+            var answer = await codex.SendMessageResultAsync(
+                BuildPrompt(candidate),
+                delta => Interlocked.Add(ref receivedCharacters, delta.Length),
+                cancellationToken);
+            heartbeatCancellation.Cancel();
+            try
+            {
+                await heartbeat;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            if (!answer.Success)
+            {
+                failedThisRun++;
+                reportStatus?.Invoke($"第 {index + 1} 篇未完成，正在继续下一篇 · 已有 {readyCount} 篇就绪");
+                continue;
+            }
+
+            var generated = TryParseItems(answer.Response);
+            var grounded = GroundGeneratedItems(generated, [candidate]).FirstOrDefault();
+            if (grounded is null || !EditionQualityPolicy.IsQualifiedItem(grounded))
+            {
+#if DEBUG
+                await File.WriteAllTextAsync(
+                    Path.Combine(workspace, "last-invalid-news.json"),
+                    answer.Response,
+                    cancellationToken);
+#endif
+                failedThisRun++;
+                reportStatus?.Invoke($"第 {index + 1} 篇未通过质量检查，继续下一篇 · 已有 {readyCount} 篇就绪");
+                continue;
+            }
+
+            var saveResult = await saveReadyItem(grounded, cancellationToken);
+            readyCount = saveResult.Count;
+            if (saveResult.Persisted && saveResult.Changed)
+            {
+                completedThisRun++;
+                reportStatus?.Invoke($"已有 {readyCount} 篇最新资讯就绪 · 后台继续准备");
+            }
+            else
+            {
+                failedThisRun++;
+                reportStatus?.Invoke($"第 {index + 1} 篇未进入资讯池，继续下一篇 · 已有 {readyCount} 篇就绪");
+            }
         }
 
-        var edition = TryParseEdition(answer.Response);
-        reportStatus?.Invoke("Codex 已完成撰写 · 正在检查中文、结构与栏目覆盖…");
-        NormalizeMetadata(edition);
-        if (!_policy.IsQualified(edition) || !HasGroundedSources(edition, currentEdition, selectedCandidates))
-        {
-            reportStatus?.Invoke("初稿未通过质量检查 · Codex 正在自动修订…");
-            var repair = await codex.SendMessageResultAsync(
-                "上一份 JSON 没有通过应用的硬性质量门槛。请重新输出完整 JSON：必须正好 20 条；每 10 条至少含 2 条大模型、2 条 Agent、1 篇论文、1 个开源项目；每条为中文标题、50 个以上汉字的摘要、2 到 4 个术语解释、3 到 5 个有信息量的小节，每条小节正文至少 45 个汉字，总计至少 275 个汉字。只输出 JSON。",
-                cancellationToken: cancellationToken);
-            edition = repair.Success ? TryParseEdition(repair.Response) : null;
-            NormalizeMetadata(edition);
-        }
-
-        return _policy.IsQualified(edition) && HasGroundedSources(edition, currentEdition, selectedCandidates)
-            ? new(true, true, true, edition, "本机 Codex 已完成今日资讯整理。")
-            : new(false, true, false, null, "本机 Codex 已返回结果，但本次内容未通过完整性检查，已保留上一期资讯。");
+        var status = completedThisRun > 0
+            ? $"已有 {readyCount} 篇最新资讯就绪 · 本轮新增 {completedThisRun} 篇"
+            : failedThisRun > 0
+                ? $"已有 {readyCount} 篇资讯就绪 · 本轮候选未能完成，可稍后重试"
+                : $"已有 {readyCount} 篇最新资讯就绪";
+        return new(completedThisRun > 0 || failedThisRun == 0, true, completedThisRun, readyCount, status);
     }
 
-    private static void NormalizeMetadata(NewsEdition? edition)
+    private static List<NewsItem> SelectUnseenCandidates(
+        NewsEdition currentEdition,
+        IReadOnlyList<NewsItem> ready,
+        IReadOnlyList<NewsItem> candidates,
+        int maximumNewItems)
     {
-        if (edition is null)
-        {
-            return;
-        }
-        edition.SchemaVersion = EditionQualityPolicy.QualifiedSchemaVersion;
-        edition.EditionDate = DateTimeOffset.Now.ToString("yyyy-MM-dd");
-        edition.GeneratedAt = DateTimeOffset.Now;
-        edition.WindowHours = Math.Clamp(edition.WindowHours <= 0 ? 72 : edition.WindowHours, 24, 336);
+        var knownUrls = currentEdition.Items
+            .Concat(ready)
+            .Select(item => NormalizeUrl(item.SourceUrl))
+            .Where(url => url.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return candidates
+            .Where(item => !string.IsNullOrWhiteSpace(item.SourceUrl))
+            .Where(item => !knownUrls.Contains(NormalizeUrl(item.SourceUrl)))
+            .DistinctBy(item => NormalizeUrl(item.SourceUrl), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(item => ParseDate(item.PublishedAt))
+            .ThenByDescending(item => item.TechnicalRelevanceScore + item.InnovationScore)
+            .Take(Math.Max(0, maximumNewItems))
+            .ToList();
     }
 
-    private static NewsEdition? TryParseEdition(string response)
+    private static List<NewsItem> GroundGeneratedItems(
+        IReadOnlyList<NewsItem> generated,
+        IReadOnlyList<NewsItem> candidates)
+    {
+        var candidateByUrl = candidates
+            .GroupBy(item => NormalizeUrl(item.SourceUrl), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var grounded = new List<NewsItem>();
+        foreach (var item in generated)
+        {
+            if (!candidateByUrl.TryGetValue(NormalizeUrl(item.SourceUrl), out var source))
+            {
+                continue;
+            }
+            item.Id = source.Id;
+            item.SourceUrl = source.SourceUrl;
+            item.SourceName = source.SourceName;
+            item.PublishedAt = source.PublishedAt;
+            item.Brand = source.Brand;
+            item.BrandColor = source.BrandColor;
+            item.LogoAsset = source.LogoAsset;
+            item.SourceTrail = [source.SourceUrl];
+            item.IsPrimarySourceVerified = source.IsPrimarySourceVerified;
+            item.IndependentSourceCount = Math.Max(item.IndependentSourceCount, source.IndependentSourceCount);
+            grounded.Add(item);
+        }
+        return grounded;
+    }
+
+    private static List<NewsItem> TryParseItems(string response)
     {
         if (string.IsNullOrWhiteSpace(response))
         {
-            return null;
+            return [];
         }
         var start = response.IndexOf('{');
         var end = response.LastIndexOf('}');
         if (start < 0 || end <= start)
         {
-            return null;
+            return [];
         }
         try
         {
-            return JsonSerializer.Deserialize<NewsEdition>(response[start..(end + 1)], JsonOptions);
+            return JsonSerializer.Deserialize<GeneratedItemsResponse>(
+                response[start..(end + 1)],
+                JsonOptions)?.Items ?? [];
         }
         catch (JsonException)
         {
-            return null;
+            return [];
         }
     }
 
-    private static bool HasGroundedSources(
-        NewsEdition? edition,
-        NewsEdition currentEdition,
-        IReadOnlyList<NewsItem> candidates)
+    private static string BuildPrompt(NewsItem candidate)
     {
-        if (edition is null)
-        {
-            return false;
-        }
-        var allowed = currentEdition.Items
-            .Concat(candidates)
-            .Select(item => NormalizeUrl(item.SourceUrl))
-            .Where(url => url.Length > 0)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return edition.Items.All(item =>
-            allowed.Contains(NormalizeUrl(item.SourceUrl)) &&
-            DateTimeOffset.TryParse(item.PublishedAt, out var published) &&
-            published <= DateTimeOffset.Now.AddMinutes(10));
+        var source = JsonSerializer.Serialize(candidate, JsonOptions);
+        return $$"""
+            请把下面这一条来源写成可直接进入 AI Frontier 的中文资讯，只返回 {"items":[NewsItem]}。
+
+            硬性要求：sourceUrl 必须原样复制；contentType 只能是“论文”“开源项目”“模型发布”“Agent产品”“产业事件”；topics 只能使用“大模型”“Agent”“重要研究”“开源项目”“产业动态”。中文标题先说做到什么；summary 至少 50 个汉字；readerContext 至少 12 个汉字；termExplanations 2-4 个且每个解释至少 12 个汉字；briefSections 3-5 节，每一节必须使用 {"title":"章节标题","body":"正文"}，不要使用 heading；每节至少 55 个汉字、合计至少 300 个汉字。论文按背景、方法、结果、贡献和限制，其他类型按问题、能力或机制、应用、影响和限制。technicalRelevanceScore 至少 0.55，innovationScore 至少 0.35。不要写筛选说明、真实性声明、为什么值得看等空话。
+
+            来源资料：
+            {{source}}
+
+            只输出 JSON 对象。
+            """;
     }
+
+    private static async Task ReportHeartbeatAsync(
+        Func<int> readCharacters,
+        DateTimeOffset startedAt,
+        int readyCount,
+        int currentIndex,
+        int total,
+        Action<string>? reportStatus,
+        CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(8));
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            var elapsed = Math.Max(1, (int)(DateTimeOffset.Now - startedAt).TotalSeconds);
+            var characters = readCharacters();
+            reportStatus?.Invoke(characters > 0
+                ? $"已有 {readyCount} 篇就绪 · 第 {currentIndex}/{total} 篇已接收约 {characters} 字"
+                : $"已有 {readyCount} 篇就绪 · 正在准备第 {currentIndex}/{total} 篇 · {elapsed} 秒");
+        }
+    }
+
+    private static DateTimeOffset ParseDate(string value) =>
+        DateTimeOffset.TryParse(value, out var parsed) ? parsed : DateTimeOffset.MinValue;
 
     private static string NormalizeUrl(string value)
     {
@@ -170,26 +285,8 @@ public sealed class LocalCodexNewsUpdater
         return builder.Uri.AbsoluteUri.TrimEnd('/');
     }
 
-    private static string BuildPrompt(NewsEdition currentEdition, IReadOnlyList<NewsItem> candidates)
+    private sealed class GeneratedItemsResponse
     {
-        var current = JsonSerializer.Serialize(currentEdition, JsonOptions);
-        var discovered = JsonSerializer.Serialize(candidates, JsonOptions);
-        return $$"""
-            今天是 {{DateTimeOffset.Now:yyyy-MM-dd}}。请生成 AI Frontier 今日中文资讯版，返回一个 NewsEdition JSON 对象。
-
-            编辑目标：像科技记者一样，第一时间说清“发生了什么、做到了什么、贡献是什么、怎么做到、有什么影响和局限”。重视大模型、Agent、论文与真正有技术价值的开源项目，不收录娱乐化话题。可以保留当前版仍重要的内容，只用更强、更近的新事件替换弱项。
-
-            硬性格式：schemaVersion=2；editionDate={{DateTimeOffset.Now:yyyy-MM-dd}}；windowHours 24-336；generatedAt 使用当前 ISO 时间；items 正好 20 条。每连续 10 条至少有 2 条 topics 含“大模型”、2 条含“Agent”、1 条 contentType 为“论文”、1 条为“开源项目”。contentType 只能是“论文”“开源项目”“模型发布”“Agent产品”“产业事件”；topics 只能使用“大模型”“Agent”“重要研究”“开源项目”“产业动态”。
-
-            每条必须：中文标题；50 个以上汉字的摘要并直接交代核心成果；readerContext 用一句话说明所属领域；2-4 个 termExplanations；3-5 个 briefSections，标题清楚且正文每节至少 45 个汉字、全文至少 275 个汉字，按事件原本逻辑组织。论文按背景、方法、实验结果、贡献与限制；产品或模型按需求、能力变化、实现方式、影响与限制；开源项目按解决问题、核心机制、适用场景、成熟度与限制。不要出现“完整报道、发布信息与适用范围、趋势参考、为什么值得看、真实性声明、筛选说明、请读者核实”等空话。sourceUrl 必须来自提供的资料，不要编造链接。各评分使用 0 到 1。
-
-            当前合格版：
-            {{current}}
-
-            本机刚采集的候选资料：
-            {{discovered}}
-
-            只输出完整 JSON 对象。
-            """;
+        public List<NewsItem> Items { get; set; } = [];
     }
 }

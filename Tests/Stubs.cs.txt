@@ -26,6 +26,10 @@ public sealed class NewsItem
     public double TechnicalRelevanceScore { get; set; }
     public double FreshnessScore { get; set; }
     public bool IsPrimarySourceVerified { get; set; }
+    public DateTimeOffset? AddedAt { get; set; }
+    public bool IsRead { get; set; }
+    public bool HasRecentArrival => AddedAt is { } added && DateTimeOffset.Now - added <= TimeSpan.FromDays(3);
+    public bool IsNew => HasRecentArrival && !IsRead;
 }
 
 
@@ -67,6 +71,18 @@ public sealed record FeedbackEvent(
     string Category,
     string Source,
     DateTimeOffset CreatedAt);
+
+public sealed record PreferenceRecordResult(PreferenceProfile Profile, bool Persisted);
+
+public enum NewsUpdateMode { CloudPreferred, LocalCodexOnly }
+public sealed class LocalNewsUpdateSettings
+{
+    public NewsUpdateMode Mode { get; set; }
+    public bool LocalFallbackEnabled { get; set; } = true;
+    public string LastStatus { get; set; } = string.Empty;
+}
+public sealed record DailyNewsUpdateResult(bool Checked, bool NewsChanged, bool UsedLocalCodex, bool CodexConnected, string Status);
+public sealed record ReadyNewsPromotionResult(int PublishedCount, int RemainingCount, bool NewsChanged, string Status);
 }
 
 namespace AIFrontier.Services
@@ -74,7 +90,29 @@ namespace AIFrontier.Services
 using AIFrontier.Models;
 public sealed class NewsService
 {
-    public Task<NewsEdition> LoadAsync() => Task.FromResult(new NewsEdition());
+    public Task<NewsEdition> LoadAsync(bool refreshRemote = true) => Task.FromResult(new NewsEdition());
+}
+
+public sealed class DailyNewsUpdateCoordinator
+{
+    public Task<LocalNewsUpdateSettings> LoadSettingsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LocalNewsUpdateSettings());
+    public Task<int> GetReadyCountAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+    public Task SavePreferencesAsync(bool personalMode, bool fallbackEnabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<DailyNewsUpdateResult> RunAsync(NewsEdition edition, bool force, Action<string>? reportStatus = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new DailyNewsUpdateResult(true, false, false, false, string.Empty));
+    public Task<ReadyNewsPromotionResult> PublishReadyAsync(NewsEdition edition, int count, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ReadyNewsPromotionResult(0, 0, false, string.Empty));
+}
+
+public static class ReadyNewsQueueService
+{
+    public const int PublishBatchSize = 3;
+}
+
+public static class NewsOrderingPolicy
+{
+    public static List<NewsItem> PrioritizeArrivalState(IEnumerable<NewsItem> items) => items.ToList();
 }
 
 public enum UpdateChoice { InstallNow, EnableAutoUpdate, SkipVersion, NeverPrompt }
@@ -111,5 +149,22 @@ namespace Windows.System
 public static class Launcher
 {
     public static Task<bool> LaunchUriAsync(Uri uri) => Task.FromResult(true);
+}
+}
+
+namespace AIFrontier
+{
+public static class App
+{
+    public static TestDispatcherQueue DispatcherQueue { get; } = new();
+}
+
+public sealed class TestDispatcherQueue
+{
+    public bool TryEnqueue(Action callback)
+    {
+        callback();
+        return true;
+    }
 }
 }

@@ -15,6 +15,10 @@
     <Compile Include="..\..\Services\AtomicJsonStore.cs" Link="Production\AtomicJsonStore.cs" />
     <Compile Include="..\..\Services\BoundedProcessRunner.cs" Link="Production\BoundedProcessRunner.cs" />
     <Compile Include="..\..\Services\DailyNewsUpdatePolicy.cs" Link="Production\DailyNewsUpdatePolicy.cs" />
+    <Compile Include="..\..\Services\IncrementalEditionComposer.cs" Link="Production\IncrementalEditionComposer.cs" />
+    <Compile Include="..\..\Services\ReadyNewsQueueService.cs" Link="Production\ReadyNewsQueueService.cs" />
+    <Compile Include="..\..\Services\NewsOrderingPolicy.cs" Link="Production\NewsOrderingPolicy.cs" />
+    <Compile Include="..\..\Services\BookmarkedEditionMerger.cs" Link="Production\BookmarkedEditionMerger.cs" />
     <Compile Include="..\..\Models\LocalNewsUpdateModels.cs" Link="Production\LocalNewsUpdateModels.cs" />
   </ItemGroup>
 </Project>

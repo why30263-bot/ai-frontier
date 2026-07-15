@@ -12,11 +12,15 @@ public sealed class DailyNewsUpdateCoordinator
     };
 
     private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static readonly SemaphoreSlim PublishGate = new(1, 1);
     private readonly AtomicJsonStore<LocalNewsUpdateSettings> _settingsStore;
     private readonly QualifiedEditionStore _editionStore;
     private readonly CloudFeedHealthService _cloud = new();
     private readonly LocalCodexNewsUpdater _local = new();
     private readonly EditionQualityPolicy _policy = new();
+    private readonly ReadyNewsQueueService _readyQueue = new();
+    private readonly IncrementalEditionComposer _composer = new();
+    private readonly PreferenceService _preferences = new();
 
     public DailyNewsUpdateCoordinator()
     {
@@ -82,13 +86,23 @@ public sealed class DailyNewsUpdateCoordinator
                     settings.LastCloudSuccessAt = DateTimeOffset.Now;
                     var remoteIsNewer = cloud.Edition is not null &&
                         _policy.ChooseNewest(displayedEdition, cloud.Edition) == cloud.Edition;
+                    if (remoteIsNewer)
+                    {
+                        var profile = await _preferences.LoadAsync();
+                        var bookmarked = (profile.BookmarkedIds ?? []).ToHashSet(StringComparer.Ordinal);
+                        cloud = cloud with
+                        {
+                            Edition = BookmarkedEditionMerger.Preserve(
+                                cloud.Edition!,
+                                displayedEdition,
+                                bookmarked)
+                        };
+                    }
                     var cloudPublished = !remoteIsNewer ||
                         await _editionStore.SaveAsync(cloud.Edition!, cancellationToken);
                     var changed = remoteIsNewer && cloudPublished;
                     if (cloudPublished)
                     {
-                        settings.LastCompletedLocalDate = today;
-                        settings.LastCompletedMode = NewsUpdateMode.CloudPreferred;
                         settings.LastStatus = cloud.Status;
                     }
                     else
@@ -111,22 +125,31 @@ public sealed class DailyNewsUpdateCoordinator
 
             if (!force &&
                 settings.LastLocalAttemptAt is { } lastAttempt &&
-                DateTimeOffset.Now - lastAttempt < TimeSpan.FromHours(2))
+                DateTimeOffset.Now - lastAttempt < TimeSpan.FromMinutes(5))
             {
+                var count = await _readyQueue.CountAsync(cancellationToken);
                 var connected = CodexIntegrationService.FindCodexExecutable() is not null;
-                return new(false, false, false, connected, "本机更新刚刚尝试过，稍后会自动重试；上一期资讯仍可正常阅读。");
+                return new(false, false, false, connected, $"已有 {count} 篇最新资讯就绪 · 后台稍后继续补充");
             }
 
-            reportStatus?.Invoke("已连接 Codex · 正在更新今日资讯…");
+            var readyQueue = await _readyQueue.LoadAsync(cancellationToken);
+            if (readyQueue.Items.Count >= ReadyNewsQueueService.TargetBufferSize)
+            {
+                return new(true, false, true, true, $"已有 {readyQueue.Items.Count} 篇最新资讯就绪");
+            }
+
+            reportStatus?.Invoke($"已有 {readyQueue.Items.Count} 篇最新资讯就绪 · 后台正在补充…");
             settings.LastLocalAttemptAt = DateTimeOffset.Now;
-            settings.LastStatus = "已连接 Codex · 正在更新今日资讯…";
+            settings.LastStatus = $"已有 {readyQueue.Items.Count} 篇最新资讯就绪 · 后台正在补充…";
             await _settingsStore.SaveAsync(settings, cancellationToken);
-            var local = await _local.UpdateAsync(displayedEdition, reportStatus, cancellationToken);
-            reportStatus?.Invoke(local.Success ? "内容已通过检查 · 正在发布到本机资讯流…" : local.Status);
-            var completed = local.Success && local.Edition is not null;
-            var published = completed && (!local.Changed ||
-                await _editionStore.SaveAsync(local.Edition!, cancellationToken));
-            if (published)
+            var local = await _local.UpdateAsync(
+                displayedEdition,
+                readyQueue.Items,
+                ReadyNewsQueueService.TargetBufferSize,
+                (item, token) => _readyQueue.EnqueueAsync(item, token),
+                reportStatus,
+                cancellationToken);
+            if (local.Success)
             {
                 settings.LastLocalSuccessAt = DateTimeOffset.Now;
                 settings.LastCompletedLocalDate = today;
@@ -138,11 +161,68 @@ public sealed class DailyNewsUpdateCoordinator
                 settings.LastStatus = local.Status;
             }
             await _settingsStore.SaveAsync(settings, cancellationToken);
-            return new(true, published && local.Changed, true, local.CodexConnected, settings.LastStatus);
+            return new(true, false, true, local.CodexConnected, settings.LastStatus);
         }
         finally
         {
             Gate.Release();
+        }
+    }
+
+    public Task<int> GetReadyCountAsync(CancellationToken cancellationToken = default) =>
+        _readyQueue.CountAsync(cancellationToken);
+
+    public async Task<ReadyNewsPromotionResult> PublishReadyAsync(
+        NewsEdition displayedEdition,
+        int count = ReadyNewsQueueService.PublishBatchSize,
+        CancellationToken cancellationToken = default)
+    {
+        await PublishGate.WaitAsync(cancellationToken);
+        try
+        {
+            var reconciled = await _readyQueue.ReconcilePublishedAsync(
+                displayedEdition.Items,
+                cancellationToken);
+            if (!reconciled.Persisted)
+            {
+                return new(0, reconciled.Count, false, "后台资讯池暂时无法同步，稍后会自动重试");
+            }
+
+            var ready = await _readyQueue.PeekAsync(count, cancellationToken);
+            if (ready.Count == 0)
+            {
+                return new(0, reconciled.Count, false, "后台还没有已就绪的新资讯，正在继续准备");
+            }
+
+            var profile = await _preferences.LoadAsync();
+            var bookmarked = (profile.BookmarkedIds ?? []).ToHashSet(StringComparer.Ordinal);
+            var merge = _composer.TryMerge(displayedEdition, ready, bookmarked);
+            if (merge.Edition is null || merge.AcceptedCount == 0 ||
+                !await _editionStore.SaveAsync(merge.Edition, cancellationToken))
+            {
+                var remainingOnFailure = await _readyQueue.CountAsync(cancellationToken);
+                return new(0, remainingOnFailure, false, "新资讯暂时无法发布，已继续保留在后台资讯池");
+            }
+
+            var oldIds = displayedEdition.Items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            var publishedIds = merge.Edition.Items
+                .Where(item => !oldIds.Contains(item.Id))
+                .Select(item => item.Id)
+                .Take(merge.AcceptedCount)
+                .ToList();
+            var removal = await _readyQueue.RemoveAsync(publishedIds, cancellationToken);
+            var status = removal.Persisted
+                ? $"已发布 {publishedIds.Count} 篇最新资讯 · 后台还有 {removal.Count} 篇就绪"
+                : $"已发布 {publishedIds.Count} 篇最新资讯 · 后台队列将在下次刷新时自动同步";
+            return new(
+                publishedIds.Count,
+                removal.Count,
+                publishedIds.Count > 0,
+                status);
+        }
+        finally
+        {
+            PublishGate.Release();
         }
     }
 }

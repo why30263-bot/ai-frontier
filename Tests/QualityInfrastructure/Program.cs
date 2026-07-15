@@ -125,15 +125,15 @@ try
     {
         item.Topics = ["重要研究"];
     }
-    Check(!policy.IsQualified(weakCoverage), "大模型与 Agent 覆盖不足时整期拒绝");
+    Check(policy.IsQualified(weakCoverage), "内容池不再因固定批次题材比例而拒绝合格单篇");
 
     var onlyOneBatch = ValidEdition();
     onlyOneBatch.Items = onlyOneBatch.Items.Take(10).ToList();
-    Check(!policy.IsQualified(onlyOneBatch), "少于两批的内容池会被拒绝");
+    Check(!policy.IsQualified(onlyOneBatch), "远端或正式资讯少于二十条时不能覆盖完整缓存");
 
     var incompleteBatch = ValidEdition();
     incompleteBatch.Items.Add(ValidEdition(77).Items[0]);
-    Check(!policy.IsQualified(incompleteBatch), "不是 10 的整倍数时整期拒绝");
+    Check(policy.IsQualified(incompleteBatch), "内容池条数不必是十的整数倍");
 
     var weakSecondBatch = ValidEdition();
     foreach (var item in weakSecondBatch.Items.Skip(10))
@@ -141,7 +141,7 @@ try
         item.ContentType = "产业事件";
         item.Topics = ["产业动态"];
     }
-    Check(!policy.IsQualified(weakSecondBatch), "任一批缺少核心维度时整期拒绝");
+    Check(policy.IsQualified(weakSecondBatch), "增长后的内容池按单篇质量验证而非固定分页配额");
 
     var thinAgentBatch = ValidEdition();
     var secondAgentItems = thinAgentBatch.Items.Skip(10)
@@ -151,7 +151,7 @@ try
     {
         item.Topics = ["重要研究"];
     }
-    Check(!policy.IsQualified(thinAgentBatch), "任一批只有一条 Agent 时会被拒绝");
+    Check(policy.IsQualified(thinAgentBatch), "某一页 Agent 数量不足不会阻止保存其他合格资讯");
 
     var repoFirstTitle = ValidEdition();
     repoFirstTitle.Items[0].Title = "owner/repo v3.2 发布新的智能分析能力";
@@ -213,6 +213,95 @@ try
         "云端连续过期两次后由本机 Codex 接管");
     Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.LocalCodexOnly, true, 0, healthyCloud) == DailyNewsUpdateRoute.UseLocalCodex,
         "个人模式不依赖云端成品并直接使用本机 Codex");
+
+    var incrementalBase = ValidEdition(200);
+    var incrementalNew = ValidEdition(201).Items[0];
+    var incrementalComposer = new IncrementalEditionComposer(policy, () => now);
+    var incrementalMerge = incrementalComposer.TryMerge(incrementalBase, [incrementalNew]);
+    Check(incrementalMerge.AcceptedCount == 1 && policy.IsQualified(incrementalMerge.Edition),
+        "两条以内的本机 Codex 增量稿可安全合并而无需重写整期");
+
+    var headingAlias = JsonSerializer.Deserialize<BriefSection>(
+        "{\"heading\":\"研究结果\",\"body\":\"正文内容\"}");
+    Check(headingAlias?.Title == "研究结果",
+        "本机模型返回 heading 时会兼容映射为章节 title");
+
+    var retentionBase = ValidEdition(300);
+    var bookmarked = retentionBase.Items[0];
+    bookmarked.PublishedAt = now.AddDays(-30).ToString("O");
+    var expired = retentionBase.Items[1];
+    expired.PublishedAt = now.AddDays(-20).ToString("O");
+    var retentionNew = ValidEdition(301).Items[0];
+    var retentionMerge = incrementalComposer.TryMerge(
+        retentionBase,
+        [retentionNew],
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { bookmarked.Id });
+    var retainedEdition = retentionMerge.Edition!;
+    Check(retainedEdition.Items.Any(item => item.Id == bookmarked.Id),
+        "收藏资讯即使超过十五天也永久保留");
+    Check(retainedEdition.Items.All(item => item.Id != expired.Id),
+        "未收藏资讯超过十五天后才会被清理");
+    Check(retainedEdition.Items[0].Id == retentionNew.Id &&
+          retainedEdition.Items[0].AddedAt is not null,
+        "从隐藏池发布的资讯会置顶并记录 NEW 时间");
+
+    var readyQueue = new ReadyNewsQueueService(Path.Combine(testRoot, "ready", "news.json"));
+    var newlyPreparedOlderSource = ValidEdition(302).Items[0];
+    newlyPreparedOlderSource.PublishedAt = now.AddDays(-30).ToString("O");
+    Check((await readyQueue.EnqueueAsync(newlyPreparedOlderSource)).Count == 1,
+        "隐藏池按准备完成时间保留，不会把刚写好的较早来源立即删除");
+
+    var oldSourcePublished = ValidEdition(303).Items[0];
+    oldSourcePublished.PublishedAt = now.AddDays(-30).ToString("O");
+    var oldSourceMerge = incrementalComposer.TryMerge(ValidEdition(304), [oldSourcePublished]);
+    var followupMerge = incrementalComposer.TryMerge(
+        oldSourceMerge.Edition!,
+        [ValidEdition(305).Items[0]]);
+    Check(followupMerge.Edition!.Items.Any(item => item.Id == oldSourcePublished.Id),
+        "刚发布的 NEW 按入流时间保留，不会因来源日期较早在下一批消失");
+
+    var reconcileQueue = new ReadyNewsQueueService(Path.Combine(testRoot, "reconcile", "news.json"));
+    var reconcileItems = Enumerable.Range(0, 4)
+        .Select(index => ValidEdition(500 + index).Items[0])
+        .ToList();
+    foreach (var item in reconcileItems)
+    {
+        Check((await reconcileQueue.EnqueueAsync(item)).Persisted, "崩溃恢复测试条目可写入隐藏池");
+    }
+    var reconciled = await reconcileQueue.ReconcilePublishedAsync(reconcileItems.Take(3));
+    var nextReady = await reconcileQueue.PeekAsync(3);
+    Check(reconciled.Persisted && reconciled.Changed && reconciled.Count == 1 &&
+          nextReady.Single().Id == reconcileItems[3].Id,
+        "已发布但未清队列的头部条目会被恢复清理，后续资讯不被永久卡住");
+
+    var blockedQueue = new ReadyNewsQueueService(Path.Combine(parentFile, "ready-news.json"));
+    var blockedQueueWrite = await blockedQueue.EnqueueAsync(ValidEdition(550).Items[0]);
+    Check(!blockedQueueWrite.Persisted && !blockedQueueWrite.Changed,
+        "隐藏池落盘失败时不会把条目误报为已就绪");
+
+    var incomingCloud = ValidEdition(600);
+    var existingLocal = ValidEdition(601);
+    var savedArticle = existingLocal.Items[0];
+    var mergedCloud = BookmarkedEditionMerger.Preserve(
+        incomingCloud,
+        existingLocal,
+        new HashSet<string>(StringComparer.Ordinal) { savedArticle.Id });
+    Check(mergedCloud.Items.Any(item => item.Id == savedArticle.Id) && policy.IsQualified(mergedCloud),
+        "云端新版覆盖时收藏正文仍会保留在本地资讯池");
+
+    var unreadNewest = ValidEdition(401).Items[0];
+    unreadNewest.AddedAt = DateTimeOffset.Now;
+    var unreadOlder = ValidEdition(402).Items[0];
+    unreadOlder.AddedAt = DateTimeOffset.Now.AddMinutes(-5);
+    var clickedNew = ValidEdition(403).Items[0];
+    clickedNew.AddedAt = DateTimeOffset.Now.AddMinutes(-2);
+    clickedNew.IsRead = true;
+    var ordinaryNews = ValidEdition(404).Items[0];
+    var orderedNews = NewsOrderingPolicy.PrioritizeArrivalState(
+        [ordinaryNews, clickedNew, unreadOlder, unreadNewest]);
+    Check(orderedNews.Select(item => item.Id).SequenceEqual(
+        [unreadNewest.Id, unreadOlder.Id, clickedNew.Id, ordinaryNews.Id]),
+        "每个板块都先按更新时间展示未读 NEW，点开后移动到最后一条 NEW 下方");
 
     var timeoutProcess = new ProcessStartInfo
     {

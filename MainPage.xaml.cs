@@ -108,10 +108,22 @@ public sealed partial class MainPage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
+        await RefreshLatestNewsAsync();
+    }
+
+    private async Task RefreshLatestNewsAsync()
+    {
         SetBusy(RefreshButton, RefreshProgressRing, true);
         try
         {
-            await RunDailyNewsUpdateAsync(true);
+            var promoted = await ViewModel.PublishReadyNewsAsync(
+                _dailyUpdateCancellation?.Token ?? CancellationToken.None);
+            if (promoted.NewsChanged)
+            {
+                await RefreshNewsAsync(false);
+                ResetReadingPosition();
+            }
+            _ = RunDailyNewsUpdateAsync(true);
             ViewModel.FeedbackMessage = ViewModel.LocalNewsUpdateStatus;
             ViewModel.IsFeedbackMessageOpen = true;
         }
@@ -128,11 +140,21 @@ public sealed partial class MainPage : Page
 
     private async void TodayNavigation_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (!_localUpdateSettingsReady || ViewModel.IsLocalNewsUpdateBusy)
+        if (!_localUpdateSettingsReady)
         {
             return;
         }
-        await RunDailyNewsUpdateAsync(true);
+        await RefreshLatestNewsAsync();
+    }
+
+    private async void StopDailyNewsUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsLocalNewsUpdateBusy)
+        {
+            return;
+        }
+        await CancelDailyNewsUpdateAsync();
+        ViewModel.LocalNewsUpdateStatus = "已停止本次更新，继续显示上一期资讯";
     }
 
     private void NextBatchButton_Click(object sender, RoutedEventArgs e)

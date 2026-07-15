@@ -39,22 +39,39 @@ public sealed class PreferenceService
 
     public async Task<PreferenceProfile> LoadAsync()
     {
-        Directory.CreateDirectory(_storageRoot);
-        var profile = await _profileStore.LoadAsync();
-        if (profile is null && File.Exists(_bundledProfilePath))
+        try
         {
-            profile = await new AtomicJsonStore<PreferenceProfile>(_bundledProfilePath, JsonOptions).LoadAsync();
-        }
+            Directory.CreateDirectory(_storageRoot);
+            var profile = await _profileStore.LoadAsync();
+            if (profile is null && File.Exists(_bundledProfilePath))
+            {
+                profile = await new AtomicJsonStore<PreferenceProfile>(_bundledProfilePath, JsonOptions).LoadAsync();
+            }
 
-        return NormalizeProfile(profile ?? new PreferenceProfile());
+            return NormalizeProfile(profile ?? new PreferenceProfile());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return NormalizeProfile(new PreferenceProfile());
+        }
     }
 
-    public async Task<PreferenceProfile> RecordAsync(NewsItem item, string action, double? score = null)
+    public async Task<PreferenceRecordResult> RecordAsync(
+        NewsItem item,
+        string action,
+        double? score = null)
     {
         await _gate.WaitAsync();
         try
         {
-            Directory.CreateDirectory(_storageRoot);
+            try
+            {
+                Directory.CreateDirectory(_storageRoot);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return new(new PreferenceProfile(), false);
+            }
             var profile = await LoadAsync();
             profile.ArticlePreferences ??= [];
             profile.BookmarkedIds ??= [];
@@ -87,7 +104,11 @@ public sealed class PreferenceService
 
             // The profile is the source of truth. Atomic replacement ensures a crash
             // cannot leave a half-written JSON document behind.
-            _ = await _profileStore.SaveAsync(profile);
+            var persisted = await _profileStore.SaveAsync(profile);
+            if (!persisted)
+            {
+                return new(profile, false);
+            }
 
             try
             {
@@ -103,7 +124,7 @@ public sealed class PreferenceService
                 // Analytics must never prevent the preference itself from being usable.
             }
 
-            return profile;
+            return new(profile, true);
         }
         finally
         {

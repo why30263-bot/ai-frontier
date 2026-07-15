@@ -38,6 +38,24 @@ public sealed record CloudFeedHealth(
 public sealed record LocalCodexUpdateResult(
     bool Success,
     bool CodexConnected,
-    bool Changed,
-    NewsEdition? Edition,
+    int AddedCount,
+    int ReadyCount,
     string Status);
+
+public sealed class ReadyNewsQueue
+{
+    public int SchemaVersion { get; set; } = 1;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+    public List<NewsItem> Items { get; set; } = [];
+}
+
+public sealed record ReadyNewsPromotionResult(
+    int PublishedCount,
+    int RemainingCount,
+    bool NewsChanged,
+    string Status);
+
+public sealed record ReadyNewsMutationResult(
+    bool Persisted,
+    bool Changed,
+    int Count);

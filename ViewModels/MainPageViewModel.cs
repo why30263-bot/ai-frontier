@@ -103,6 +103,14 @@ public partial class MainPageViewModel : ObservableObject
                 ? "个人模式：每天启动后由本机 Codex 更新"
                 : "云端优先，异常时由本机 Codex 自动接管"
             : localSettings.LastStatus;
+        if (IsPersonalUpdateMode)
+        {
+            var readyCount = await _dailyNewsUpdateCoordinator.GetReadyCountAsync();
+            if (readyCount > 0 && !IsLocalNewsUpdateBusy)
+            {
+                LocalNewsUpdateStatus = $"已有 {readyCount} 篇最新资讯就绪 · 点击刷新即可置顶显示";
+            }
+        }
         var edition = await _newsService.LoadAsync(refreshRemote: !IsPersonalUpdateMode);
         _allItems.Clear();
         _allItems.AddRange(edition.Items);
@@ -110,6 +118,11 @@ public partial class MainPageViewModel : ObservableObject
         WorkflowProfilePath = _preferenceService.WorkflowProfilePath;
 
         _profile = await _preferenceService.LoadAsync();
+        foreach (var item in _allItems)
+        {
+            item.IsRead = _profile.ArticlePreferences.TryGetValue(item.Id, out var preference) &&
+                preference.DetailOpened;
+        }
         _bookmarkedIds.Clear();
         _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
         PreferenceSummary = BuildPreferenceSummary(_profile);
@@ -169,6 +182,18 @@ public partial class MainPageViewModel : ObservableObject
         }
     }
 
+    public async Task<ReadyNewsPromotionResult> PublishReadyNewsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var current = await _newsService.LoadAsync(refreshRemote: false);
+        var result = await _dailyNewsUpdateCoordinator.PublishReadyAsync(
+            current,
+            ReadyNewsQueueService.PublishBatchSize,
+            cancellationToken);
+        LocalNewsUpdateStatus = result.Status;
+        return result;
+    }
+
     private async Task DetectCodexAsync()
     {
         var codex = await _codexIntegrationService.GetStatusAsync();
@@ -212,7 +237,11 @@ public partial class MainPageViewModel : ObservableObject
         var result = await _codexIntegrationService.AnalyzeAsync(SelectedItem);
         if (result.IsConnected)
         {
-            _profile = await _preferenceService.RecordAsync(SelectedItem, "codex-open");
+            var preferenceResult = await _preferenceService.RecordAsync(SelectedItem, "codex-open");
+            if (preferenceResult.Persisted)
+            {
+                _profile = preferenceResult.Profile;
+            }
         }
         CodexStatus = result.Status;
         ShowFeedback(result.Status);
@@ -238,11 +267,31 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task SelectAsync(NewsItem item)
     {
+        var wasUnreadNew = item.IsNew;
         SelectedItem = item;
-        if (_openedThisSession.Add(item.Id))
+        var readStatePersisted = _openedThisSession.Contains(item.Id);
+        if (!readStatePersisted)
         {
-            _profile = await _preferenceService.RecordAsync(item, "detail");
-            PreferenceSummary = BuildPreferenceSummary(_profile);
+            var result = await _preferenceService.RecordAsync(item, "detail");
+            readStatePersisted = result.Persisted;
+            if (result.Persisted)
+            {
+                _profile = result.Profile;
+                _openedThisSession.Add(item.Id);
+                PreferenceSummary = BuildPreferenceSummary(_profile);
+            }
+        }
+        if (readStatePersisted)
+        {
+            item.IsRead = true;
+            if (wasUnreadNew)
+            {
+                ApplyFilter();
+            }
+        }
+        else
+        {
+            ShowFeedback("已打开资讯，但已读状态暂时无法保存；下次点击会继续重试");
         }
     }
 
@@ -265,7 +314,13 @@ public partial class MainPageViewModel : ObservableObject
             return;
         }
 
-        _profile = await _preferenceService.RecordAsync(SelectedItem, action, score);
+        var result = await _preferenceService.RecordAsync(SelectedItem, action, score);
+        if (!result.Persisted)
+        {
+            ShowFeedback("操作暂时无法保存，请稍后重试");
+            return;
+        }
+        _profile = result.Profile;
         _bookmarkedIds.Clear();
         _bookmarkedIds.UnionWith(_profile.BookmarkedIds ?? []);
         PreferenceSummary = BuildPreferenceSummary(_profile);
@@ -296,7 +351,11 @@ public partial class MainPageViewModel : ObservableObject
         {
             if (await Launcher.LaunchUriAsync(uri))
             {
-                _profile = await _preferenceService.RecordAsync(SelectedItem, "source-open");
+                var result = await _preferenceService.RecordAsync(SelectedItem, "source-open");
+                if (result.Persisted)
+                {
+                    _profile = result.Profile;
+                }
             }
             else
             {
@@ -326,9 +385,6 @@ public partial class MainPageViewModel : ObservableObject
         }
         else if (_activeCategory == "全部" && !_savedOnly && query.Length == 0)
         {
-            // The edition pipeline publishes complete, coverage-checked pages.
-            // Personalization may reorder within a page but must not pull all
-            // papers or open-source entries into page one and weaken page two.
             filteredList = filteredList
                 .Chunk(BatchSize)
                 .SelectMany(batch => RankForUser(batch.ToList(), _recommendationMode ? 0.30 : 0.20))
@@ -338,6 +394,7 @@ public partial class MainPageViewModel : ObservableObject
         {
             filteredList = RankForUser(filteredList, _recommendationMode ? 0.30 : 0.20);
         }
+        filteredList = NewsOrderingPolicy.PrioritizeArrivalState(filteredList);
         _filteredItems = filteredList;
         _batchStart = 0;
         RenderBatch(selectedId);
@@ -354,7 +411,15 @@ public partial class MainPageViewModel : ObservableObject
         var pageCount = Math.Max(1, (int)Math.Ceiling(_filteredItems.Count / (double)BatchSize));
         var page = Math.Min(pageCount, _batchStart / BatchSize + 1);
         BatchLabel = $"第 {page}/{pageCount} 批 · {take} 条";
-        SelectedItem = Items.FirstOrDefault(item => item.Id == selectedId) ?? Items.FirstOrDefault();
+        var selectedOnPage = Items.FirstOrDefault(item => item.Id == selectedId);
+        if (selectedOnPage is not null)
+        {
+            SelectedItem = selectedOnPage;
+        }
+        else if (selectedId is null || !_filteredItems.Any(item => item.Id == selectedId))
+        {
+            SelectedItem = Items.FirstOrDefault();
+        }
     }
 
     private List<NewsItem> BalanceForHome(List<NewsItem> items)
