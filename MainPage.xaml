@@ -489,6 +489,11 @@
                         <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                         <TextBlock Text="版本更新" Style="{StaticResource SubtitleTextBlockStyle}" />
                         <TextBlock Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <HyperlinkButton
+                            x:Name="ManualUpdateLink"
+                            Content="自动更新失败？在浏览器中下载最新版"
+                            NavigateUri="https://github.com/why30263-bot/ai-frontier/releases/latest"
+                            Visibility="Collapsed" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="CheckUpdatesButton" Click="CheckUpdatesButton_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="7">
