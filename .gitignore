@@ -9,6 +9,10 @@
 *.userosscache
 *.sln.docstates
 artifacts/
+.build-local/
+.dist/
+.dotnet-home/
+.tmp/
 
 # Build logs
 [Ll]og/
