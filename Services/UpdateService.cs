@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -10,7 +9,12 @@ namespace AIFrontier.Services;
 public sealed class UpdateService
 {
     private const string LatestReleaseApi = "https://api.github.com/repos/why30263-bot/ai-frontier/releases/latest";
-    private static readonly HttpClient Http = CreateClient();
+    private const string LatestReleasePage = "https://github.com/why30263-bot/ai-frontier/releases/latest";
+    private const int MaximumAttempts = 3;
+    private static readonly TimeSpan MetadataAttemptTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(15);
+    private static readonly HttpClient MetadataHttp = CreateClient();
+    private static readonly HttpClient DownloadHttp = CreateClient();
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
     private readonly string _updateRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -24,7 +28,7 @@ public sealed class UpdateService
         var preferences = await LoadPreferencesAsync();
         try
         {
-            var release = await Http.GetFromJsonAsync<GitHubRelease>(LatestReleaseApi, JsonOptions);
+            var release = await GetReleaseWithRetryAsync();
             var latest = ParseVersion(release?.TagName);
             var current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
             preferences.LastCheckedAt = DateTimeOffset.Now;
@@ -67,7 +71,8 @@ public sealed class UpdateService
         }
         catch
         {
-            return new(false, Assembly.GetExecutingAssembly().GetName().Version, null, "当前离线，稍后仍会检查官网更新", false, preferences.AutoUpdate, string.Empty, string.Empty, string.Empty);
+            var current = Assembly.GetExecutingAssembly().GetName().Version;
+            return new(false, current, null, "暂时无法连接更新服务器，稍后会自动重试；也可以在浏览器中下载最新版", false, preferences.AutoUpdate, LatestReleasePage, string.Empty, string.Empty);
         }
     }
 
@@ -148,12 +153,12 @@ public sealed class UpdateService
         {
             Directory.CreateDirectory(_updateRoot);
             var installerPath = Path.Combine(_updateRoot, $"AIFrontier-Setup-{update.LatestVersion}.exe");
-            var bytes = await Http.GetByteArrayAsync(update.InstallerUrl);
-            await File.WriteAllBytesAsync(installerPath, bytes);
-            var expectedHash = (await Http.GetStringAsync(update.ChecksumUrl))
+            await DownloadFileWithRetryAsync(update.InstallerUrl, installerPath);
+            var expectedHash = (await GetStringWithRetryAsync(update.ChecksumUrl))
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
                 .FirstOrDefault();
-            var actualHash = Convert.ToHexString(SHA256.HashData(bytes));
+            await using var installer = File.OpenRead(installerPath);
+            var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(installer));
             if (string.IsNullOrWhiteSpace(expectedHash) || !actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(installerPath);
@@ -165,11 +170,120 @@ public sealed class UpdateService
                 ? $"已启用自动更新，正在安装 {update.LatestVersion}"
                 : $"正在安装 {update.LatestVersion}";
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsTransientNetworkFailure(exception))
         {
-            return $"更新失败：{exception.Message}";
+            return $"更新包下载暂时失败：网络连接不稳定。稍后可再次点击检查更新，当前版本不受影响";
+        }
+        catch
+        {
+            return "自动更新失败；可以在浏览器中下载最新版，当前版本不受影响";
         }
     }
+
+    private static async Task<GitHubRelease?> GetReleaseWithRetryAsync()
+    {
+        for (var attempt = 1; attempt <= MaximumAttempts; attempt++)
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(MetadataAttemptTimeout);
+                using var response = await MetadataHttp.GetAsync(
+                    LatestReleaseApi,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    timeout.Token);
+                response.EnsureSuccessStatusCode();
+                await using var content = await response.Content.ReadAsStreamAsync(timeout.Token);
+                return await JsonSerializer.DeserializeAsync<GitHubRelease>(content, JsonOptions, timeout.Token);
+            }
+            catch (Exception exception) when (IsTransientNetworkFailure(exception) && attempt < MaximumAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt));
+            }
+        }
+
+        throw new HttpRequestException("更新服务器连续三次连接失败");
+    }
+
+    private static async Task<string> GetStringWithRetryAsync(string url)
+    {
+        for (var attempt = 1; attempt <= MaximumAttempts; attempt++)
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(MetadataAttemptTimeout);
+                return await MetadataHttp.GetStringAsync(url, timeout.Token);
+            }
+            catch (Exception exception) when (IsTransientNetworkFailure(exception) && attempt < MaximumAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt));
+            }
+        }
+
+        throw new HttpRequestException("校验文件连续三次下载失败");
+    }
+
+    private static async Task DownloadFileWithRetryAsync(string url, string destinationPath)
+    {
+        var temporaryPath = destinationPath + ".download";
+        for (var attempt = 1; attempt <= MaximumAttempts; attempt++)
+        {
+            try
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+
+                HttpResponseMessage response;
+                using (var headersTimeout = new CancellationTokenSource(MetadataAttemptTimeout))
+                {
+                    response = await DownloadHttp.GetAsync(
+                        url,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        headersTimeout.Token);
+                }
+                using (response)
+                {
+                response.EnsureSuccessStatusCode();
+
+                using var downloadTimeout = new CancellationTokenSource(DownloadTimeout);
+                await using var source = await response.Content.ReadAsStreamAsync(downloadTimeout.Token);
+                await using var target = new FileStream(
+                    temporaryPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    1024 * 128,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                await source.CopyToAsync(target, downloadTimeout.Token);
+                await target.FlushAsync(downloadTimeout.Token);
+                File.Move(temporaryPath, destinationPath, true);
+                return;
+                }
+            }
+            catch (Exception exception) when (IsTransientNetworkFailure(exception))
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+                if (attempt >= MaximumAttempts)
+                {
+                    break;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(attempt));
+            }
+        }
+
+        if (File.Exists(temporaryPath))
+        {
+            File.Delete(temporaryPath);
+        }
+        throw new HttpRequestException("安装包连续三次下载失败");
+    }
+
+    private static bool IsTransientNetworkFailure(Exception exception) =>
+        exception is HttpRequestException or TaskCanceledException or TimeoutException or IOException;
 
     private static void LaunchInstaller(string installerPath, bool automatic) =>
         Process.Start(new ProcessStartInfo
@@ -210,8 +324,8 @@ public sealed class UpdateService
 
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("AIFrontier-Updater/1.1");
+        var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("AIFrontier-Updater/1.4");
         return client;
     }
 

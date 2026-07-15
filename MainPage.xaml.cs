@@ -755,6 +755,9 @@ public sealed partial class MainPage : Page
     private async Task CheckForUpdatesAndPromptAsync(bool forcePrompt)
     {
         var update = await ViewModel.CheckForUpdatesAsync();
+        ManualUpdateLink.Visibility = !update.IsAvailable && !string.IsNullOrWhiteSpace(update.ReleaseUrl)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         if (!update.IsAvailable)
         {
             if (forcePrompt)
@@ -768,6 +771,7 @@ public sealed partial class MainPage : Page
         if (update.AutoUpdateEnabled)
         {
             await ViewModel.ApplyUpdateChoiceAsync(update, UpdateChoice.EnableAutoUpdate);
+            ShowManualUpdateLinkAfterDownloadFailure();
             return;
         }
 
@@ -819,6 +823,15 @@ public sealed partial class MainPage : Page
             _ => UpdateChoice.InstallNow
         };
         await ViewModel.ApplyUpdateChoiceAsync(update, choice);
+        ShowManualUpdateLinkAfterDownloadFailure();
+    }
+
+    private void ShowManualUpdateLinkAfterDownloadFailure()
+    {
+        if (ViewModel.UpdateStatus.Contains("失败", StringComparison.Ordinal))
+        {
+            ManualUpdateLink.Visibility = Visibility.Visible;
+        }
     }
 
     private void ResetReadingPosition()
