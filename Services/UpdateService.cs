@@ -290,8 +290,8 @@ public sealed class UpdateService
         {
             FileName = installerPath,
             Arguments = automatic
-                ? "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS"
-                : "/SILENT /NORESTART /CLOSEAPPLICATIONS",
+                ? "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
+                : "/SILENT /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
             UseShellExecute = true
         });
 

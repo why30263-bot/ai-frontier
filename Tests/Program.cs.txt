@@ -190,6 +190,19 @@ if (codexUsesDarkControls && codexUsesDarkTitleBar)
 else
     Fail("Codex 独立窗口没有完整锁定内容区和标题栏的高对比深色主题");
 
+var installerScript = File.ReadAllText(Path.Combine(repoRoot, "installer", "AIFrontier.iss"));
+var updaterSource = File.ReadAllText(Path.Combine(repoRoot, "Services", "UpdateService.cs"));
+var preservesInstallIdentity = installerScript.Contains("AppId={{A8F4E179-3D47-4C8E-AE63-F32E208883E0}") &&
+    installerScript.Contains("UsePreviousAppDir=yes") &&
+    installerScript.Contains("UsePreviousTasks=yes");
+var restartsAfterReplacement = installerScript.Contains("RestartApplications=yes") &&
+    updaterSource.Contains("/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS");
+var keepsUserDataOutsideInstallFiles = !installerScript.Contains("{localappdata}\\AIFrontier", StringComparison.OrdinalIgnoreCase);
+if (preservesInstallIdentity && restartsAfterReplacement && keepsUserDataOutsideInstallFiles)
+    Pass("安装包沿用原目录原地替换程序文件，并在升级后恢复运行且不触碰用户数据");
+else
+    Fail("安装包没有完整满足原地升级、自动恢复运行和用户数据隔离契约");
+
 var newsPath = Path.Combine(repoRoot, "Data", "news.json");
 using var newsDocument = JsonDocument.Parse(await File.ReadAllTextAsync(newsPath));
 var root = newsDocument.RootElement;
