@@ -8,6 +8,7 @@
     xmlns:models="using:AIFrontier.Models"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Loaded="Page_Loaded"
+    Unloaded="Page_Unloaded"
     SizeChanged="Page_SizeChanged"
     mc:Ignorable="d">
 
@@ -61,6 +62,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="FeedColumn" Width="*" />
                     <ColumnDefinition x:Name="DetailColumn" Width="440" />
+                    <ColumnDefinition x:Name="ChatColumn" Width="0" />
                 </Grid.ColumnDefinitions>
 
                 <Grid x:Name="FeedPane" Grid.Column="0">
@@ -174,8 +176,50 @@
                                 <Button x:Name="CompactBackButton" Content="← 返回新闻流" Click="CompactBackButton_Click" Visibility="Collapsed" HorizontalAlignment="Left" />
 
                                 <TextBlock Text="{Binding SelectedItem.ContentLabel}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level1" />
-                                <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                 <TextBlock Text="{Binding SelectedItem.Title}" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level1" />
+                                 <TextBlock Text="{Binding SelectedItem.ReadingMeta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                                 <Border
+                                     Padding="18,16"
+                                     Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                     BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                     BorderThickness="4,0,0,0"
+                                     CornerRadius="12">
+                                     <StackPanel Spacing="7">
+                                         <TextBlock Text="先看结论" FontSize="17" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2" />
+                                         <TextBlock Text="{Binding SelectedItem.Summary}" FontSize="16" TextWrapping="Wrap" LineHeight="27" IsTextSelectionEnabled="True" />
+                                     </StackPanel>
+                                 </Border>
+
+                                <Border
+                                    Padding="16"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12">
+                                    <StackPanel Spacing="7">
+                                         <TextBlock Text="这是什么领域" FontSize="17" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2" />
+                                        <TextBlock Text="{Binding SelectedItem.ReaderContext}" FontSize="15" TextWrapping="Wrap" LineHeight="25" />
+                                    </StackPanel>
+                                </Border>
+
+                                 <TextBlock Text="读前术语" FontSize="17" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2" />
+                                 <ItemsControl ItemsSource="{Binding SelectedItem.TermExplanations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:TermExplanation">
+                                            <Border
+                                                Margin="0,0,0,8"
+                                                Padding="14,12"
+                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="10">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{x:Bind Term}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                    <TextBlock Text="{x:Bind Explanation}" TextWrapping="Wrap" LineHeight="23" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
                                 <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
                                 <ItemsControl ItemsSource="{Binding SelectedItem.BriefSections}">
@@ -198,7 +242,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Button x:Name="AnalyzeWithCodexButton" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.HelpText="把当前资讯交给本机 Codex 辅助阅读">
+                                    <Button x:Name="AnalyzeWithCodexButton" Click="AnalyzeWithCodexButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.Name="使用 Codex 深度分析当前资讯" AutomationProperties.HelpText="在应用内打开 Codex 工作区并分析当前资讯">
                                         <StackPanel Orientation="Horizontal" Spacing="7">
                                             <ProgressRing x:Name="CodexProgressRing" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
                                             <TextBlock Text="使用 Codex 深度分析" />
@@ -231,8 +275,130 @@
                 </Border>
 
                 <Border
+                    x:Name="CodexChatPane"
+                    Grid.Column="2"
+                    Visibility="Collapsed"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Canvas.ZIndex="20"
+                    AutomationProperties.Name="Codex 辅助阅读工作区">
+                    <Grid Padding="18" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="36" Height="36" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="10">
+                                <FontIcon Glyph="&#xE99A;" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" FontSize="18" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="Codex 阅读工作区" FontSize="18" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2" />
+                                <TextBlock Text="围绕当前资讯持续追问" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button x:Name="NewCodexConversationButton" Grid.Column="2" Content="新对话" Click="NewCodexConversationButton_Click" AutomationProperties.Name="开始新的 Codex 对话" />
+                            <Button Grid.Column="3" Content="&#xE711;" FontFamily="Segoe Fluent Icons" Click="CloseCodexChatButton_Click" AutomationProperties.Name="关闭 Codex 工作区" />
+                        </Grid>
+
+                        <Border Grid.Row="1" Padding="12,9" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="10">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="当前资讯" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                 <TextBlock Text="{Binding SelectedItem.Title}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
+                            </StackPanel>
+                        </Border>
+
+                        <ListView
+                            x:Name="CodexMessageList"
+                            Grid.Row="2"
+                            ItemsSource="{x:Bind CodexMessages}"
+                            SelectionMode="None"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.Name="Codex 对话消息">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="0,0,0,10" />
+                                    <Setter Property="IsTabStop" Value="False" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:CodexChatMessage">
+                                     <Border Padding="13,11" Background="{x:Bind BubbleBackground}" BorderBrush="{x:Bind BubbleBorderBrush}" BorderThickness="1" CornerRadius="12" HorizontalAlignment="{x:Bind BubbleAlignment}" MaxWidth="{x:Bind BubbleMaxWidth}">
+                                        <StackPanel Spacing="5">
+                                            <Grid>
+                                                <TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                <TextBlock Text="{x:Bind TimeLabel}" HorizontalAlignment="Right" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                            </Grid>
+                                             <TextBlock Text="{x:Bind Content, Mode=OneWay}" TextWrapping="Wrap" LineHeight="24" IsTextSelectionEnabled="True" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <StackPanel Grid.Row="3" Spacing="8">
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Tag="请用一句话解释这条资讯最重要的结论。" Click="CodexQuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.Name="快捷追问：用一句话解释">
+                                    <TextBlock Text="用一句话解释" TextWrapping="Wrap" TextAlignment="Center" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="1" Tag="这项进展有哪些关键局限和容易误解的地方？" Click="CodexQuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.Name="快捷追问：有什么局限">
+                                    <TextBlock Text="有什么局限" TextWrapping="Wrap" TextAlignment="Center" FontSize="12" />
+                                </Button>
+                                <Button Grid.Column="2" Tag="请面向没有专业基础的读者解释这条资讯。" Click="CodexQuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" AutomationProperties.Name="快捷追问：给新手讲讲">
+                                    <TextBlock Text="给新手讲讲" TextWrapping="Wrap" TextAlignment="Center" FontSize="12" />
+                                </Button>
+                            </Grid>
+                            <StackPanel x:Name="CodexBusyPanel" Orientation="Horizontal" Spacing="8" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
+                                <ProgressRing x:Name="CodexChatProgressRing" Width="16" Height="16" IsActive="False" />
+                                <TextBlock Text="Codex 正在阅读和整理…" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Button Content="停止" Click="StopCodexButton_Click" Padding="10,3" AutomationProperties.Name="停止 Codex 回答" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid Grid.Row="4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="CodexPromptTextBox"
+                                PlaceholderText="继续追问当前资讯…"
+                                AcceptsReturn="True"
+                                TextWrapping="Wrap"
+                                MaxHeight="120"
+                                KeyDown="CodexPromptTextBox_KeyDown"
+                                AutomationProperties.Name="输入 Codex 问题" />
+                            <Button
+                                x:Name="SendCodexMessageButton"
+                                Grid.Column="1"
+                                Content="发送"
+                                Click="SendCodexMessageButton_Click"
+                                VerticalAlignment="Stretch"
+                                AutomationProperties.Name="发送消息给 Codex" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border
                     x:Name="PreferencePane"
-                    Grid.ColumnSpan="2"
+                    Grid.ColumnSpan="3"
                     Visibility="Collapsed"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
                     CornerRadius="18"

@@ -25,10 +25,65 @@ PROCESS_PHRASES = (
     "自动采集", "采集器", "筛选逻辑", "置信度", "人工核查", "跨来源验证", "报道边界",
     "无法替代", "未披露的内容不作补写", "需要结合原文", "需要核对",
 )
+SENTENCE_END_PATTERN = re.compile(r"[。！？!?]")
+EVENT_CONTEXT_MARKERS = (
+    "这项", "本文", "本次", "这里", "该研究", "该项目", "该模型", "该系统",
+    "这个版本", "这套方法", "这项政策", "在这个", "在本条", "在这条",
+)
 
 
 def chinese_character_count(value: Any) -> int:
     return len(HAN_PATTERN.findall(value if isinstance(value, str) else ""))
+
+
+def is_single_reader_context_sentence(value: Any) -> bool:
+    text = value.strip() if isinstance(value, str) else ""
+    return (
+        16 <= chinese_character_count(text) <= 80
+        and "\n" not in text
+        and len(SENTENCE_END_PATTERN.findall(text)) == 1
+        and bool(SENTENCE_END_PATTERN.search(text[-1:]))
+    )
+
+
+def validate_reader_help(item: dict[str, Any], label: str, reader_text: list[str], errors: list[str]) -> None:
+    context = item.get("readerContext")
+    if not is_single_reader_context_sentence(context):
+        errors.append(f"{label}.readerContext 必须是一句 16-80 个中文字符的领域与问题说明")
+    else:
+        reader_text.append(context)
+
+    explanations = item.get("termExplanations")
+    if not isinstance(explanations, list) or not 2 <= len(explanations) <= 4:
+        errors.append(f"{label}.termExplanations 必须有 2-4 项")
+        return
+    story_text = " ".join([
+        str(item.get("title", "")),
+        str(item.get("summary", "")),
+        *(str(value) for value in item.get("keyFacts", [])),
+        *(f"{section.get('title', '')} {section.get('body', '')}" for section in item.get("briefSections", []) if isinstance(section, dict)),
+    ]).lower()
+    seen: set[str] = set()
+    for explanation_index, entry in enumerate(explanations):
+        entry_label = f"{label}.termExplanations[{explanation_index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{entry_label} 必须是对象")
+            continue
+        term = str(entry.get("term") or "").strip()
+        explanation = str(entry.get("explanation") or "").strip()
+        normalized_term = term.lower()
+        if not term or len(term) > 40:
+            errors.append(f"{entry_label}.term 无效")
+        elif normalized_term in seen:
+            errors.append(f"{entry_label}.term 重复")
+        elif normalized_term not in story_text:
+            errors.append(f"{entry_label}.term 未出现在资讯正文")
+        seen.add(normalized_term)
+        if not 12 <= chinese_character_count(explanation) <= 90:
+            errors.append(f"{entry_label}.explanation 必须有 12-90 个中文字符")
+        elif not any(marker in explanation for marker in EVENT_CONTEXT_MARKERS):
+            errors.append(f"{entry_label}.explanation 必须结合当前事件解释")
+        reader_text.extend((term, explanation))
 
 
 def load_json(path: Path, errors: list[str]) -> dict[str, Any]:
@@ -136,6 +191,7 @@ def validate_item(item: Any, index: int, errors: list[str]) -> None:
             reader_text.extend(str(part) for part in value)
         else:
             reader_text.append(str(value or ""))
+    validate_reader_help(item, label, reader_text, errors)
     if any(ENGLISH_SENTENCE_PATTERN.search(text) for text in reader_text):
         errors.append(f"{label} 的读者可见字段含完整英文句子")
     leaked = sorted({phrase for text in reader_text for phrase in PROCESS_PHRASES if phrase in text})

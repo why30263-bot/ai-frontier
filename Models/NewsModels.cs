@@ -1,5 +1,8 @@
 using System.Text.Json.Serialization;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Microsoft.UI;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
@@ -26,6 +29,8 @@ public sealed class NewsItem
     public string LogoAsset { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
+    public string ReaderContext { get; set; } = string.Empty;
+    public List<TermExplanation> TermExplanations { get; set; } = [];
     public string FullBrief { get; set; } = string.Empty;
     public List<BriefSection> BriefSections { get; set; } = [];
     public string PublishedAt { get; set; } = string.Empty;
@@ -107,6 +112,67 @@ public sealed class BriefSection
 {
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+}
+
+public sealed class TermExplanation
+{
+    public string Term { get; set; } = string.Empty;
+    public string Explanation { get; set; } = string.Empty;
+}
+
+public sealed class CodexChatMessage : INotifyPropertyChanged
+{
+    private string _content = string.Empty;
+    private bool _isPending;
+
+    public string SenderLabel { get; set; } = string.Empty;
+    public string Kind { get; set; } = "assistant";
+    public string TimeLabel { get; set; } = DateTime.Now.ToString("HH:mm");
+
+    public HorizontalAlignment BubbleAlignment => Kind == "user"
+        ? HorizontalAlignment.Right
+        : HorizontalAlignment.Left;
+
+    public double BubbleMaxWidth => Kind == "user" ? 320 : 370;
+
+    public SolidColorBrush BubbleBackground => Kind switch
+    {
+        "user" => new SolidColorBrush(Color.FromArgb(255, 35, 82, 112)),
+        "system" => new SolidColorBrush(Color.FromArgb(38, 255, 185, 64)),
+        _ => new SolidColorBrush(Color.FromArgb(24, 128, 128, 128))
+    };
+
+    public SolidColorBrush BubbleBorderBrush => Kind switch
+    {
+        "user" => new SolidColorBrush(Color.FromArgb(255, 52, 124, 158)),
+        "system" => new SolidColorBrush(Color.FromArgb(100, 255, 185, 64)),
+        _ => new SolidColorBrush(Color.FromArgb(46, 128, 128, 128))
+    };
+
+    public string Content
+    {
+        get => _content;
+        set => SetField(ref _content, value);
+    }
+
+    public bool IsPending
+    {
+        get => _isPending;
+        set => SetField(ref _isPending, value);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }
 
 public sealed class PreferenceProfile
