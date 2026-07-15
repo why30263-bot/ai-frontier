@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="AIFrontier.CodexChatWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:AIFrontier.Models"
+    Title="Codex 阅读工作区">
+
+    <!-- Deliberately opaque: article text from another window must never show through. -->
+    <Grid Background="#17191D" Padding="22" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border Width="42" Height="42" Background="#9C6ADE" CornerRadius="12">
+                <FontIcon Glyph="&#xE99A;" Foreground="White" FontSize="20" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="Codex 阅读工作区" FontSize="20" FontWeight="SemiBold" />
+                <TextBlock Text="独立窗口 · 可移动、缩放并持续追问" FontSize="12" Foreground="#AEB4C0" />
+            </StackPanel>
+            <Button x:Name="NewConversationButton" Grid.Column="2" Content="新对话" Click="NewConversationButton_Click" />
+        </Grid>
+
+        <Border Grid.Row="1" Padding="14,11" Background="#22252B" BorderBrush="#343840" BorderThickness="1" CornerRadius="10">
+            <StackPanel Spacing="4">
+                <TextBlock Text="当前资讯" FontSize="11" Foreground="#AEB4C0" />
+                <TextBlock x:Name="CurrentArticleTitle" Text="尚未选择资讯" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="3" />
+            </StackPanel>
+        </Border>
+
+        <ListView
+            x:Name="MessageList"
+            Grid.Row="2"
+            ItemsSource="{x:Bind Messages}"
+            SelectionMode="None"
+            HorizontalContentAlignment="Stretch">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0,0,0,10" />
+                    <Setter Property="IsTabStop" Value="False" />
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:CodexChatMessage">
+                    <Border
+                        Padding="14,12"
+                        Background="{x:Bind BubbleBackground}"
+                        BorderBrush="{x:Bind BubbleBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        HorizontalAlignment="{x:Bind BubbleAlignment}"
+                        MaxWidth="{x:Bind BubbleMaxWidth}">
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="{x:Bind SenderLabel}" FontWeight="SemiBold" Foreground="#D9B9FF" />
+                                <TextBlock Text="{x:Bind TimeLabel}" HorizontalAlignment="Right" FontSize="11" Foreground="#8E95A3" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind Content, Mode=OneWay}" TextWrapping="Wrap" LineHeight="25" IsTextSelectionEnabled="True" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <StackPanel Grid.Row="3" Spacing="9">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Tag="请用一句话解释这条资讯最重要的结论。" Click="QuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                    <TextBlock Text="一句话解释" TextWrapping="Wrap" />
+                </Button>
+                <Button Grid.Column="1" Tag="这项进展有哪些关键局限和容易误解的地方？" Click="QuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                    <TextBlock Text="有什么局限" TextWrapping="Wrap" />
+                </Button>
+                <Button Grid.Column="2" Tag="请面向没有专业基础的读者解释这条资讯。" Click="QuickPromptButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                    <TextBlock Text="给新手讲讲" TextWrapping="Wrap" />
+                </Button>
+            </Grid>
+            <StackPanel x:Name="BusyPanel" Orientation="Horizontal" Spacing="9" Visibility="Collapsed">
+                <ProgressRing x:Name="BusyRing" Width="17" Height="17" />
+                <TextBlock x:Name="BusyStatusText" Text="Codex 已收到消息，正在思考…" Foreground="#AEB4C0" />
+                <Button Content="停止" Click="StopButton_Click" Padding="10,3" />
+            </StackPanel>
+        </StackPanel>
+
+        <Grid Grid.Row="4" ColumnSpacing="9">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                x:Name="PromptTextBox"
+                PlaceholderText="继续追问当前资讯…"
+                AcceptsReturn="True"
+                TextWrapping="Wrap"
+                MaxHeight="150"
+                KeyDown="PromptTextBox_KeyDown" />
+            <Button x:Name="SendButton" Grid.Column="1" Content="发送" Click="SendButton_Click" VerticalAlignment="Stretch" />
+        </Grid>
+    </Grid>
+</Window>

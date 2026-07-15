@@ -22,6 +22,7 @@ public sealed partial class MainPage : Page
     private CancellationTokenSource? _codexChatCancellation;
     private Task _activeCodexRequest = Task.CompletedTask;
     private readonly CodexChatService _codexChatService = new();
+    private CodexChatWindow? _codexChatWindow;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMinutes(10) };
     private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
 
@@ -331,11 +332,13 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        OpenCodexChat();
-        AddCodexMessage("你", $"请深度分析：{item.Title}");
-        _activeCodexRequest = RunCodexRequestAsync((onDelta, cancellationToken) =>
-            _codexChatService.AnalyzeArticleAsync(item, onDelta, cancellationToken));
-        await _activeCodexRequest;
+        if (_codexChatWindow is null)
+        {
+            _codexChatWindow = new CodexChatWindow();
+            _codexChatWindow.WorkspaceClosed += (_, _) => _codexChatWindow = null;
+        }
+        await ViewModel.RecordFeedbackAsync("codex-open");
+        await _codexChatWindow.AnalyzeArticleAsync(item);
     }
 
     private void OpenCodexChat()
@@ -580,6 +583,8 @@ public sealed partial class MainPage : Page
         await AwaitActiveCodexRequestAsync();
         _codexChatCancellation?.Dispose();
         await _codexChatService.DisposeAsync();
+        _codexChatWindow?.Shutdown();
+        _codexChatWindow = null;
     }
 
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
