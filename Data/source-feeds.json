@@ -5,6 +5,7 @@
   "refreshMinutes": 60,
   "staleAfterHours": 18,
   "maxItems": 40,
+  "maxNewItemsPerRun": 8,
   "batchSize": 10,
   "maxItemsPerSource": 6,
   "freshHours": 72,

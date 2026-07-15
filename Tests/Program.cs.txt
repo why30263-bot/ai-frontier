@@ -120,30 +120,38 @@ var feedbackItem = Item(99, "Agent");
 
 var like1 = await preferenceService.RecordAsync(feedbackItem, "like");
 var like2 = await preferenceService.RecordAsync(feedbackItem, "like");
-if (like1.ArticlePreferences[feedbackItem.Id].Reaction == "like" &&
-    like2.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
+if (like1.Profile.ArticlePreferences[feedbackItem.Id].Reaction == "like" &&
+    like2.Profile.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
     Pass("喜欢状态可再次点击撤销，偏好权重同步回退");
 else Fail("喜欢状态不可逆");
 
 var dislike1 = await preferenceService.RecordAsync(feedbackItem, "dislike");
 var dislike2 = await preferenceService.RecordAsync(feedbackItem, "dislike");
-if (dislike1.ArticlePreferences[feedbackItem.Id].Reaction == "dislike" &&
-    dislike2.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
+if (dislike1.Profile.ArticlePreferences[feedbackItem.Id].Reaction == "dislike" &&
+    dislike2.Profile.ArticlePreferences[feedbackItem.Id].Reaction == string.Empty)
     Pass("不感兴趣状态可再次点击撤销");
 else Fail("不感兴趣状态不可逆");
 
 var bookmark1 = await preferenceService.RecordAsync(feedbackItem, "bookmark");
 var bookmark2 = await preferenceService.RecordAsync(feedbackItem, "bookmark");
-if (bookmark1.BookmarkedIds.Contains(feedbackItem.Id) && !bookmark2.BookmarkedIds.Contains(feedbackItem.Id))
+if (bookmark1.Profile.BookmarkedIds.Contains(feedbackItem.Id) && !bookmark2.Profile.BookmarkedIds.Contains(feedbackItem.Id))
     Pass("收藏状态可再次点击撤销，收藏列表同步更新");
 else Fail("收藏状态不可逆或收藏列表不同步");
 
 var rating = await preferenceService.RecordAsync(feedbackItem, "rating", 4);
 var clearAttempt = await preferenceService.RecordAsync(feedbackItem, "rating-clear");
-if (rating.ArticlePreferences[feedbackItem.Id].Rating == 4 && clearAttempt.ArticlePreferences[feedbackItem.Id].Rating is null)
+if (rating.Profile.ArticlePreferences[feedbackItem.Id].Rating == 4 && clearAttempt.Profile.ArticlePreferences[feedbackItem.Id].Rating is null)
     Pass("评分可按 UI 契约通过 rating-clear 清除");
 else
-    Fail($"rating-clear 没有清除评分，当前值为 {clearAttempt.ArticlePreferences[feedbackItem.Id].Rating}");
+    Fail($"rating-clear 没有清除评分，当前值为 {clearAttempt.Profile.ArticlePreferences[feedbackItem.Id].Rating}");
+
+var blockedPreferenceRoot = Path.Combine(tempRoot, "blocked-preference-root");
+await File.WriteAllTextAsync(blockedPreferenceRoot, "not a directory");
+var blockedPreferenceService = new PreferenceService(blockedPreferenceRoot);
+var blockedWrite = await blockedPreferenceService.RecordAsync(feedbackItem, "bookmark");
+if (!blockedWrite.Persisted)
+    Pass("偏好目录不可写时不会把已读或收藏误报为保存成功");
+else Fail("偏好目录不可写时错误报告保存成功");
 
 // 4) Static UI wiring and structured Chinese reader checks.
 var xamlPath = Path.Combine(repoRoot, "MainPage.xaml");

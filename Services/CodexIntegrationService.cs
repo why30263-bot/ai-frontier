@@ -175,7 +175,7 @@ public sealed class CodexIntegrationService : IDisposable, IAsyncDisposable
         return new(result.ExitCode, result.Output, result.Error);
     }
 
-    private static string? FindCodexExecutable()
+    internal static string? FindCodexExecutable()
     {
         var candidates = new List<string>
         {

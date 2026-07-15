@@ -18,9 +18,13 @@ public sealed partial class MainPage : Page
     private bool _isCodexChatOpen;
     private bool _isCodexChatInline;
     private bool _isCodexChatInitialized;
+    private bool _localUpdateSettingsReady;
+    private bool _suppressLocalUpdateSettingsEvents;
     private bool _suppressRatingFeedback;
     private CancellationTokenSource? _codexChatCancellation;
+    private CancellationTokenSource? _dailyUpdateCancellation;
     private Task _activeCodexRequest = Task.CompletedTask;
+    private Task _activeDailyUpdateTask = Task.CompletedTask;
     private readonly CodexChatService _codexChatService = new();
     private CodexChatWindow? _codexChatWindow;
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMinutes(10) };
@@ -52,11 +56,16 @@ public sealed partial class MainPage : Page
         try
         {
             await RefreshNewsAsync(false);
+            _localUpdateSettingsReady = true;
+            _dailyUpdateCancellation?.Cancel();
+            _dailyUpdateCancellation?.Dispose();
+            _dailyUpdateCancellation = new CancellationTokenSource();
             NewsList.SelectedItem = ViewModel.SelectedItem;
             UpdateResponsiveLayout(ActualWidth);
             _refreshTimer.Start();
             _updateTimer.Start();
             _ = CheckForUpdatesAndPromptAsync(false);
+            _ = RunDailyNewsUpdateAsync(false);
         }
         catch (Exception ex)
         {
@@ -74,6 +83,7 @@ public sealed partial class MainPage : Page
     private async Task RefreshNewsAsync(bool showMessage)
     {
         SetBusy(RefreshButton, RefreshProgressRing, true);
+        _suppressLocalUpdateSettingsEvents = true;
         try
         {
             var reading = ViewModel.SelectedItem;
@@ -91,21 +101,60 @@ public sealed partial class MainPage : Page
         }
         finally
         {
+            _suppressLocalUpdateSettingsEvents = false;
             SetBusy(RefreshButton, RefreshProgressRing, false);
         }
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
+        await RefreshLatestNewsAsync();
+    }
+
+    private async Task RefreshLatestNewsAsync()
+    {
+        SetBusy(RefreshButton, RefreshProgressRing, true);
         try
         {
-            await RefreshNewsAsync(true);
+            var promoted = await ViewModel.PublishReadyNewsAsync(
+                _dailyUpdateCancellation?.Token ?? CancellationToken.None);
+            if (promoted.NewsChanged)
+            {
+                await RefreshNewsAsync(false);
+                ResetReadingPosition();
+            }
+            _ = RunDailyNewsUpdateAsync(true);
+            ViewModel.FeedbackMessage = ViewModel.LocalNewsUpdateStatus;
+            ViewModel.IsFeedbackMessageOpen = true;
         }
         catch (Exception ex)
         {
             ViewModel.FeedbackMessage = $"刷新失败：{ex.Message}";
             ViewModel.IsFeedbackMessageOpen = true;
         }
+        finally
+        {
+            SetBusy(RefreshButton, RefreshProgressRing, false);
+        }
+    }
+
+    private async void TodayNavigation_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (!_localUpdateSettingsReady)
+        {
+            return;
+        }
+        await RefreshLatestNewsAsync();
+    }
+
+    private async void StopDailyNewsUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsLocalNewsUpdateBusy)
+        {
+            return;
+        }
+        await CancelDailyNewsUpdateAsync();
+        ViewModel.LocalNewsUpdateStatus = "已停止本次更新，继续显示上一期资讯";
     }
 
     private void NextBatchButton_Click(object sender, RoutedEventArgs e)
@@ -322,6 +371,96 @@ public sealed partial class MainPage : Page
         finally
         {
             SetBusy(ConnectCodexButton, ConnectCodexProgressRing, false);
+        }
+    }
+
+    private async void PersonalUpdateMode_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_localUpdateSettingsReady ||
+            _suppressLocalUpdateSettingsEvents ||
+            sender is not ToggleSwitch toggle)
+        {
+            return;
+        }
+        await CancelDailyNewsUpdateAsync();
+        await ViewModel.SaveLocalNewsUpdatePreferencesAsync(
+            toggle.IsOn,
+            ViewModel.IsLocalFallbackEnabled);
+        if (toggle.IsOn)
+        {
+            await RunDailyNewsUpdateAsync(false);
+        }
+    }
+
+    private async void LocalFallback_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_localUpdateSettingsReady ||
+            _suppressLocalUpdateSettingsEvents ||
+            sender is not ToggleSwitch toggle)
+        {
+            return;
+        }
+        await CancelDailyNewsUpdateAsync();
+        await ViewModel.SaveLocalNewsUpdatePreferencesAsync(
+            ViewModel.IsPersonalUpdateMode,
+            toggle.IsOn);
+    }
+
+    private async void UpdateTodayWithCodexButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateTodayWithCodexButton.IsEnabled = false;
+        try
+        {
+            await RunDailyNewsUpdateAsync(true);
+        }
+        finally
+        {
+            UpdateTodayWithCodexButton.IsEnabled = true;
+        }
+    }
+
+    private Task RunDailyNewsUpdateAsync(bool force)
+    {
+        if (!_activeDailyUpdateTask.IsCompleted)
+        {
+            return _activeDailyUpdateTask;
+        }
+        _activeDailyUpdateTask = RunDailyNewsUpdateCoreAsync(force);
+        return _activeDailyUpdateTask;
+    }
+
+    private async Task CancelDailyNewsUpdateAsync()
+    {
+        _dailyUpdateCancellation?.Cancel();
+        try
+        {
+            await _activeDailyUpdateTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        _dailyUpdateCancellation?.Dispose();
+        _dailyUpdateCancellation = new CancellationTokenSource();
+    }
+
+    private async Task RunDailyNewsUpdateCoreAsync(bool force)
+    {
+        try
+        {
+            var result = await ViewModel.RunDailyNewsUpdateAsync(
+                force,
+                _dailyUpdateCancellation?.Token ?? CancellationToken.None);
+            if (result.NewsChanged)
+            {
+                await RefreshNewsAsync(false);
+            }
+        }
+        catch (OperationCanceledException) when (_dailyUpdateCancellation?.IsCancellationRequested == true)
+        {
+        }
+        catch (Exception exception)
+        {
+            ViewModel.LocalNewsUpdateStatus = $"今日资讯更新暂时失败：{exception.Message}";
         }
     }
 
@@ -579,6 +718,16 @@ public sealed partial class MainPage : Page
     {
         _refreshTimer.Stop();
         _updateTimer.Stop();
+        _dailyUpdateCancellation?.Cancel();
+        try
+        {
+            await _activeDailyUpdateTask;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        _dailyUpdateCancellation?.Dispose();
+        _dailyUpdateCancellation = null;
         _codexChatCancellation?.Cancel();
         await AwaitActiveCodexRequestAsync();
         _codexChatCancellation?.Dispose();

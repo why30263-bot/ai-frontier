@@ -215,6 +215,22 @@ class TopicEvidenceTests(unittest.TestCase):
         self.assertIn("Agent", topics)
 
 
+class IncrementalSelectionTests(unittest.TestCase):
+    def test_recognizes_published_event_without_rewriting_it(self) -> None:
+        published = report_item("published-1")
+        same_url = report_item("new-id")
+        same_url["sourceUrl"] = published["sourceUrl"]
+        same_title = report_item("new-title-id")
+        same_title["sourceUrl"] = "https://example.test/different"
+        same_title["title"] = published["title"]
+        unseen = report_item("unseen")
+        unseen["title"] = "另一项研究公开全新的智能体恢复方法"
+
+        self.assertTrue(update_feed.is_existing_event(same_url, [published]))
+        self.assertTrue(update_feed.is_existing_event(same_title, [published]))
+        self.assertFalse(update_feed.is_existing_event(unseen, [published]))
+
+
 class GitHubReleaseMaterialTests(unittest.TestCase):
     def test_release_notes_remain_primary_and_readme_is_only_context(self) -> None:
         item = report_item("release-material", content_type="开源项目", topics=["开源项目"])
