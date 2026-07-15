@@ -7,7 +7,7 @@
     Title="Codex 阅读工作区">
 
     <!-- Deliberately opaque: article text from another window must never show through. -->
-    <Grid Background="#17191D" Padding="22" RowSpacing="14">
+    <Grid Background="#17191D" Padding="22" RowSpacing="14" RequestedTheme="Dark">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

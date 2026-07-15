@@ -178,6 +178,18 @@ if (sectionControl is not null && hasSectionTitle && hasSectionBody)
     Pass("详情页按 BriefSections 动态渲染标题与正文，保留资讯层级");
 else Fail("详情页没有完整绑定结构化标题与正文");
 
+var codexWindowXaml = XDocument.Load(Path.Combine(repoRoot, "CodexChatWindow.xaml"));
+var codexWindowCode = File.ReadAllText(Path.Combine(repoRoot, "CodexChatWindow.xaml.cs"));
+var codexRootGrid = codexWindowXaml.Descendants(ns + "Grid").FirstOrDefault();
+var codexUsesDarkControls = (string?)codexRootGrid?.Attribute("RequestedTheme") == "Dark";
+var codexUsesDarkTitleBar = codexWindowCode.Contains("ApplyDarkTitleBar();") &&
+    codexWindowCode.Contains("titleBar.ButtonForegroundColor = foreground;") &&
+    codexWindowCode.Contains("titleBar.ButtonInactiveForegroundColor = inactiveForeground;");
+if (codexUsesDarkControls && codexUsesDarkTitleBar)
+    Pass("Codex 独立窗口在浅色 Windows 主题下仍保持深色高对比显示");
+else
+    Fail("Codex 独立窗口没有完整锁定内容区和标题栏的高对比深色主题");
+
 var newsPath = Path.Combine(repoRoot, "Data", "news.json");
 using var newsDocument = JsonDocument.Parse(await File.ReadAllTextAsync(newsPath));
 var root = newsDocument.RootElement;
