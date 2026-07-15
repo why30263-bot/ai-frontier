@@ -5,7 +5,7 @@ using AIFrontier.Models;
 
 namespace AIFrontier.Services;
 
-public sealed class CodexIntegrationService
+public sealed class CodexIntegrationService : IDisposable, IAsyncDisposable
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -13,8 +13,12 @@ public sealed class CodexIntegrationService
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AIFrontier",
         "codex-workspace");
+    private readonly SemaphoreSlim _chatGate = new(1, 1);
+    private CodexChatService? _chatService;
+    private string? _chatExecutable;
 
     public string WorkspacePath => _workspace;
+    public CodexChatService? ChatService => _chatService;
 
     public async Task<CodexIntegrationResult> GetStatusAsync()
     {
@@ -30,7 +34,8 @@ public sealed class CodexIntegrationService
             return new(false, $"检测到 Codex，但当前无法启动：{probe.Message}", executable);
         }
 
-        var connected = File.Exists(Path.Combine(_workspace, "integration.json"));
+        var connected = _chatService?.IsInitialized == true ||
+            File.Exists(Path.Combine(_workspace, "integration.json"));
         return new(connected, connected ? $"已接入本机 Codex · {probe.Version}" : $"已检测到 Codex · {probe.Version}", executable);
     }
 
@@ -49,11 +54,7 @@ public sealed class CodexIntegrationService
         }
 
         await PrepareWorkspaceAsync(executable, probe.RequiresServiceTierOverride, probe.Version);
-        LaunchInteractive(
-            executable,
-            probe.RequiresServiceTierOverride,
-            "请先阅读 AGENTS.md 和 APP_OVERVIEW.md。你现在是 AI Frontier 的辅助阅读伙伴，请用中文简要介绍你能如何帮助我理解新闻。若需要事实核查，可使用网络搜索。 ");
-        return new(true, $"已接入本机 Codex · {probe.Version}。已打开辅助阅读会话。", executable);
+        return new(true, $"已接入本机 Codex · {probe.Version}。深度分析会在应用内打开。", executable);
     }
 
     public async Task<CodexIntegrationResult> AnalyzeAsync(NewsItem item)
@@ -76,11 +77,15 @@ public sealed class CodexIntegrationService
             BuildArticleContext(item),
             new UTF8Encoding(false));
 
-        LaunchInteractive(
-            executable,
-            probe.RequiresServiceTierOverride,
-            "请阅读 AGENTS.md、APP_OVERVIEW.md 和 CURRENT_ARTICLE.md，按照其中的固定阅读协议分析当前资讯。先说明已确认事实，再做入门解释、影响判断和风险边界；必要时打开原始来源并搜索交叉验证。分析结束后继续留在会话中回答我的追问。 ");
-        return new(true, "已把当前资讯交给本机 Codex，并打开深度分析会话。", executable);
+        var chat = await GetOrCreateChatServiceAsync(executable, probe.RequiresServiceTierOverride);
+        var initialized = await chat.InitializeSessionAsync();
+        if (!initialized.Success)
+        {
+            return new(false, initialized.Status, executable);
+        }
+
+        var result = await chat.AnalyzeArticleResultAsync(item);
+        return new(result.Success, result.Status, executable);
     }
 
     private async Task PrepareWorkspaceAsync(string executable, bool requiresOverride, string version)
@@ -103,17 +108,36 @@ public sealed class CodexIntegrationService
             new UTF8Encoding(false));
     }
 
-    private void LaunchInteractive(string executable, bool requiresOverride, string prompt)
+    private async Task<CodexChatService> GetOrCreateChatServiceAsync(
+        string executable,
+        bool requiresServiceTierOverride)
     {
-        var overrideArgument = requiresOverride ? "-c service_tier=flex " : string.Empty;
-        var command = $"chcp 65001 >nul & \"{executable}\" {overrideArgument}--search --no-alt-screen -C \"{_workspace}\" \"{prompt.Replace("\"", "'")}\"";
-        Process.Start(new ProcessStartInfo
+        await _chatGate.WaitAsync();
+        try
         {
-            FileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
-            Arguments = $"/d /k {command}",
-            WorkingDirectory = _workspace,
-            UseShellExecute = true
-        });
+            if (_chatService is not null &&
+                string.Equals(_chatExecutable, executable, StringComparison.OrdinalIgnoreCase))
+            {
+                return _chatService;
+            }
+
+            if (_chatService is not null)
+            {
+                await _chatService.DisposeAsync();
+            }
+
+            _chatExecutable = executable;
+            _chatService = new CodexChatService(
+                executable,
+                _workspace,
+                AgentInstructions,
+                requiresServiceTierOverride);
+            return _chatService;
+        }
+        finally
+        {
+            _chatGate.Release();
+        }
     }
 
     private static async Task<CodexProbe> ProbeAsync(string executable)
@@ -126,7 +150,7 @@ public sealed class CodexIntegrationService
             return new(true, versionLabel, false, versionLabel);
         }
 
-        var withOverride = await RunCodexAsync(executable, "-c service_tier=flex features list");
+        var withOverride = await RunCodexAsync(executable, "-c service_tier=fast features list");
         if (withOverride.ExitCode == 0)
         {
             return new(true, versionLabel, true, versionLabel);
@@ -194,6 +218,12 @@ public sealed class CodexIntegrationService
             ## 摘要
             {item.Summary}
 
+            ## 领域定位
+            {item.ReaderContext}
+
+            ## 术语解释
+            {Bullets(item.TermExplanations.Select(term => $"{term.Term}：{term.Explanation}"))}
+
             ## 详细内容
             {item.FullBrief}
 
@@ -227,6 +257,7 @@ public sealed class CodexIntegrationService
         5. 论文不等于成熟产品，GitHub Star 不等于生产可用，厂商宣传不等于独立验证。
         6. 不编造原文没有的数字、发布日期、模型能力或引用；无法确认时明确说无法确认。
         7. 默认先给 5 分钟可读版本，再等待用户追问；不要执行与阅读无关的文件修改或系统操作。
+        8. 回答用于 WinUI 纯文本气泡：不要使用 Markdown 标记，不要使用 #、**、表格或代码围栏；分段使用简短中文标题，列举只使用“• ”。
         """;
 
     private const string AppOverview = """
@@ -246,6 +277,23 @@ public sealed class CodexIntegrationService
 
     private sealed record CodexProbe(bool IsUsable, string Version, bool RequiresServiceTierOverride, string Message);
     private sealed record ProcessResult(int ExitCode, string Output, string Error);
+
+    public void Dispose()
+    {
+        _chatService?.Dispose();
+        _chatGate.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_chatService is not null)
+        {
+            await _chatService.DisposeAsync();
+        }
+        _chatGate.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
 
 public sealed record CodexIntegrationResult(bool IsConnected, string Status, string ExecutablePath);

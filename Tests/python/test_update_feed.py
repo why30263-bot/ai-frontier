@@ -65,6 +65,11 @@ def report_item(
         "keyFacts": [chinese_text("关键事实", 55) for _ in range(3)],
         "context": chinese_text("背景", 55),
         "beginnerExplainer": chinese_text("解释", 55),
+        "readerContext": "这项工作属于智能系统可靠性研究，重点解决复杂任务执行时结果不稳定的问题。",
+        "termExplanations": [
+            {"term": "实现方法", "explanation": "在这项工作中，它指团队为完成技术改进而采用的具体处理步骤。"},
+            {"term": "适用条件", "explanation": "这里指该系统能够保持可靠结果时需要满足的输入与运行范围。"},
+        ],
         "impact": chinese_text("影响", 55),
         "limitations": chinese_text("限制", 55),
         "whatToWatch": chinese_text("后续", 55),
@@ -115,6 +120,23 @@ class ChineseReportGateTests(unittest.TestCase):
         self.assertTrue(any("50" in issue for issue in issues))
         self.assertTrue(any("元话语" in issue for issue in issues))
 
+    def test_requires_one_reader_context_sentence_and_event_specific_terms(self) -> None:
+        item = report_item("reader-help")
+        item["readerContext"] = "这是第一句。这里又写了第二句。"
+        item["termExplanations"][0]["explanation"] = "实现方法是一个常见的计算机术语。"
+        issues = update_feed.chinese_report_issues(item)
+        self.assertTrue(any("领域定位" in issue for issue in issues))
+        self.assertTrue(any("结合当前事件" in issue for issue in issues))
+
+    def test_rejects_missing_or_unmentioned_term_explanations(self) -> None:
+        item = report_item("reader-terms")
+        item["termExplanations"] = [
+            {"term": "不存在的术语", "explanation": "在这项工作中，它表示材料里并没有出现的概念。"}
+        ]
+        issues = update_feed.chinese_report_issues(item)
+        self.assertTrue(any("2至4个" in issue for issue in issues))
+        self.assertTrue(any("未出现在资讯正文" in issue for issue in issues))
+
 
 class WriterNormalizationTests(unittest.TestCase):
     def test_normalizes_mixed_english_and_chinese_nested_section_keys(self) -> None:
@@ -132,6 +154,11 @@ class WriterNormalizationTests(unittest.TestCase):
             "title": "研究团队提出更可靠的智能体评测方法",
             "summary": chinese_text("摘要", 90),
             "briefSections": mixed_sections,
+            "readerContext": "这项研究属于智能体评测领域，重点解决复杂任务中方法效果难以可靠比较的问题。",
+            "termExplanations": [
+                {"term": "智能体评测", "explanation": "在这项研究中，它指用统一任务比较不同智能体的实际完成效果。"},
+                {"term": "复杂任务", "explanation": "这里指需要连续执行多个步骤并根据反馈调整行动的任务。"},
+            ],
             "technicalRelevanceScore": 0.9,
             "innovationScore": 0.8,
         }
@@ -160,6 +187,7 @@ class WriterNormalizationTests(unittest.TestCase):
         )
         self.assertEqual("研究方法", enriched[0]["briefSections"][1]["title"])
         self.assertEqual("实验结果", enriched[0]["briefSections"][2]["title"])
+        self.assertEqual("智能体评测", enriched[0]["termExplanations"][0]["term"])
 
 
 class TopicEvidenceTests(unittest.TestCase):

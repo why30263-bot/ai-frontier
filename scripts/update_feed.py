@@ -213,6 +213,8 @@ def fallback_analysis(summary: str) -> dict:
         "keyFacts": [summary],
         "context": "",
         "beginnerExplainer": "",
+        "readerContext": "",
+        "termExplanations": [],
         "impact": "",
         "limitations": "",
         "whatToWatch": "",
@@ -414,6 +416,68 @@ def contains_english_sentence(value: object) -> bool:
     return bool(re.search(r"\b(?:[A-Za-z][A-Za-z0-9+.#/'-]*\s+){7,}[A-Za-z][A-Za-z0-9+.#/'-]*[.!?]?", text))
 
 
+SENTENCE_END_PATTERN = re.compile(r"[。！？!?]")
+EVENT_CONTEXT_MARKERS = (
+    "这项", "本文", "本次", "这里", "该研究", "该项目", "该模型", "该系统",
+    "这个版本", "这套方法", "这项政策", "在这个", "在本条", "在这条",
+)
+
+
+def is_single_reader_context_sentence(value: object) -> bool:
+    """Keep the domain orientation short enough to read before the article."""
+    text = str(value or "").strip()
+    return (
+        16 <= chinese_char_count(text) <= 80
+        and "\n" not in text
+        and len(SENTENCE_END_PATTERN.findall(text)) == 1
+        and bool(SENTENCE_END_PATTERN.search(text[-1:]))
+    )
+
+
+def normalize_term_explanations(value: object) -> list[dict[str, str]]:
+    """Accept only compact term/explanation pairs emitted by the writer."""
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        term = str(entry.get("term") or "").strip()
+        explanation = str(entry.get("explanation") or "").strip()
+        if term and explanation:
+            normalized.append({"term": term, "explanation": explanation})
+    return normalized
+
+
+def term_explanation_issues(item: dict) -> list[str]:
+    explanations = normalize_term_explanations(item.get("termExplanations"))
+    issues: list[str] = []
+    if not 2 <= len(explanations) <= 4:
+        issues.append("术语解释必须有2至4个")
+
+    story_text = " ".join([
+        str(item.get("title", "")),
+        str(item.get("summary", "")),
+        *(str(value) for value in item.get("keyFacts", [])),
+        *(f"{section.get('title', '')} {section.get('body', '')}" for section in item.get("briefSections", [])),
+    ]).lower()
+    seen: set[str] = set()
+    for index, entry in enumerate(explanations):
+        term = entry["term"]
+        explanation = entry["explanation"]
+        normalized_term = term.lower()
+        if normalized_term in seen:
+            issues.append(f"术语解释[{index}]重复")
+        seen.add(normalized_term)
+        if len(term) > 40 or normalized_term not in story_text:
+            issues.append(f"术语解释[{index}]未出现在资讯正文")
+        if not 12 <= chinese_char_count(explanation) <= 90:
+            issues.append(f"术语解释[{index}]长度无效")
+        if not any(marker in explanation for marker in EVENT_CONTEXT_MARKERS):
+            issues.append(f"术语解释[{index}]没有结合当前事件")
+    return issues
+
+
 def reader_copy(item: dict) -> list[str]:
     values = [item.get("title", ""), item.get("summary", "")]
     values.extend(str(value) for value in item.get("keyFacts", []))
@@ -421,6 +485,9 @@ def reader_copy(item: dict) -> list[str]:
         values.append(str(item.get(key, "")))
     for section in item.get("briefSections", []):
         values.extend((str(section.get("title", "")), str(section.get("body", ""))))
+    values.append(str(item.get("readerContext", "")))
+    for explanation in normalize_term_explanations(item.get("termExplanations")):
+        values.extend((explanation["term"], explanation["explanation"]))
     return values
 
 
@@ -460,6 +527,9 @@ def chinese_report_issues(item: dict) -> list[str]:
         issues.append("标题没有先给中文结论")
     if chinese_char_count(item.get("summary")) < 50:
         issues.append("摘要中文不足50字")
+    if not is_single_reader_context_sentence(item.get("readerContext")):
+        issues.append("领域定位必须是一句16至80字的中文说明")
+    issues.extend(term_explanation_issues(item))
     if not 3 <= len(sections) <= 5:
         issues.append("正文不是3至5段")
     if sum(chinese_char_count(section.get("body")) for section in sections) < 275:
@@ -688,7 +758,7 @@ def enrich_with_ai(
         return items, 0
 
     endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
-    allowed = {"title", "summary", "contentType", "briefSections", "keyFacts", "context", "beginnerExplainer", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore", "topics"}
+    allowed = {"title", "summary", "contentType", "briefSections", "keyFacts", "context", "beginnerExplainer", "readerContext", "termExplanations", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore", "topics"}
     enriched_count = 0
     for start in range(0, len(items), WRITER_BATCH_SIZE):
         batch = items[start:start + WRITER_BATCH_SIZE]
@@ -720,6 +790,8 @@ def enrich_with_ai(
             "briefSections必须是JSON数组，按信息量动态写3-5段，总计500-900个中文字符，少于275个中文字会被直接丢弃；首段正文至少60个中文字，每段正文至少45个中文字。第一段必须直接完整回答‘做到了什么’，其余段落从贡献、方法、关键结果、使用方式、适用对象、影响、具体限制中按材料选择，不能为凑模板重复。"
             "论文优先说明研究问题、方法、实验结果和贡献；项目优先说明能做什么、关键机制、上手方式和成熟度；模型或Agent发布优先说明新增能力、实现路径、效果和限制；产业事件按结果、变化、影响组织。段落标题要具体，避免机械使用‘发布信息与适用范围’。"
             "不得出现编辑流程、筛选逻辑、置信度、核查提醒、来源声明、‘建议查看原文’、‘以官方文档为准’等面向编辑的元话语；不得用‘值得关注’‘行业正在发展’等空话凑字。"
+            "另写readerContext：只用一句16-80个中文字说明本条属于什么领域、正在解决什么问题，句末使用中文句号。"
+            "再写termExplanations：从本条标题、摘要或正文确实出现且会妨碍普通读者理解的术语中选2-4个，格式为[{\"term\":\"术语\",\"explanation\":\"解释\"}]。解释必须用‘在这项研究中’‘这里’‘这个版本’等方式结合当前事件说明它具体起什么作用，不得复制百科定义，不得引入材料外结论。"
             "另生成中文keyFacts(3-5条)、context、beginnerExplainer、impact、limitations、whatToWatch；这些字段必须是事件内容，不得写工作流声明，且避免与正文重复。"
             "可修正topics；contentTypeLocked为true时不得修改contentType，为false时可依据本条材料修正。再给technicalRelevanceScore和innovationScore（0到1）；娱乐、人物花边、纯营销、普通代码推送或只有融资信息的技术相关性必须低于0.45。"
             "返回严格 JSON 对象，字段名必须保持英文；正文必须写成 \"briefSections\":[{\"title\":\"具体小标题\",\"body\":\"中文正文\"}]，不得改成中文字段名。整体格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
@@ -806,6 +878,15 @@ def enrich_with_ai(
                     elif key in {"technicalRelevanceScore", "innovationScore"} and isinstance(value, (int, float)):
                         item[key] = max(0.0, min(1.0, float(value)))
                         changed = True
+                    elif key == "readerContext":
+                        if is_single_reader_context_sentence(value):
+                            item[key] = str(value).strip()
+                            changed = True
+                    elif key == "termExplanations":
+                        explanations = normalize_term_explanations(value)
+                        if 2 <= len(explanations) <= 4:
+                            item[key] = explanations
+                            changed = True
                     elif key in allowed and value:
                         minimum_chinese = 2 if key == "title" else 45 if key == "summary" else 0
                         if not isinstance(value, str) or chinese_char_count(value) >= minimum_chinese:
@@ -854,6 +935,8 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                 "keyFacts": item.get("keyFacts"),
                 "context": item.get("context"),
                 "beginnerExplainer": item.get("beginnerExplainer"),
+                "readerContext": item.get("readerContext"),
+                "termExplanations": item.get("termExplanations"),
                 "impact": item.get("impact"),
                 "limitations": item.get("limitations"),
                 "whatToWatch": item.get("whatToWatch"),
@@ -867,7 +950,8 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             "(3)所有具体数字、能力、方法和因果表述均能从材料得到支持；(4)contentType与本条事件相符，contentTypeLocked为true时没有被修改，且topics准确；"
             "sourceTitle中的核心产品、模型、仓库或方法实体必须在标题或摘要中保持一致；公开可见的GitHub仓库若无明确开源许可证，不得称为开源项目。"
             "(5)正文为动态3-5段且信息密集，不重复、不凑模板；(6)没有编辑流程、来源声明、核查提醒或筛选方法等元话语；"
-            "(7)不是人物花边、娱乐、纯融资、普通代码推送或无实质变化的营销稿。"
+            "(7)readerContext用一句话准确说明领域与问题；termExplanations有2-4项，术语确实出现在本条正文，解释使用普通中文并结合本事件中的具体作用，而不是百科定义；"
+            "(8)不是人物花边、娱乐、纯融资、普通代码推送或无实质变化的营销稿。"
             "分别独立重评technicalRelevanceScore与innovationScore（0到1）。"
             "只返回JSON：{\"items\":[{\"id\":\"...\",\"pass\":true,\"technicalRelevanceScore\":0.8,\"innovationScore\":0.7,\"issues\":[]}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
