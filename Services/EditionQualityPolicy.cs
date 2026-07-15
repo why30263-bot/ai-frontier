@@ -98,6 +98,12 @@ public sealed class EditionQualityPolicy
             !HasChineseLead(item.Title) ||
             !IsChineseEditorialText(item.Title, 2) ||
             !IsChineseEditorialText(item.Summary, 50) ||
+            !IsChineseEditorialText(item.ReaderContext, 12) ||
+            item.TermExplanations is null || item.TermExplanations.Count is < 2 or > 4 ||
+            item.TermExplanations.Select(term => term.Term.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != item.TermExplanations.Count ||
+            item.TermExplanations.Any(term => term is null ||
+                string.IsNullOrWhiteSpace(term.Term) || term.Term.Length > 40 ||
+                !IsChineseEditorialText(term.Explanation, 12)) ||
             item.TechnicalRelevanceScore < 0.55 || item.TechnicalRelevanceScore > 1 ||
             item.InnovationScore < 0.35 || item.InnovationScore > 1)
         {

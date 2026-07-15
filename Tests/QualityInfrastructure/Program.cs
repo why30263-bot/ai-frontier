@@ -55,6 +55,12 @@ NewsEdition ValidEdition(int sequence = 0, int sectionCharacters = 100)
             Topics = [topic],
             Title = $"中文技术标题{index}",
             Summary = Han(55),
+            ReaderContext = $"这是人工智能领域的技术进展，帮助普通读者理解本条资讯正在解决的具体问题。{index}",
+            TermExplanations =
+            [
+                new TermExplanation { Term = "核心术语", Explanation = "这是理解当前技术变化所必需的基础概念说明。" },
+                new TermExplanation { Term = "评测指标", Explanation = "这是用来比较方法效果和适用边界的一组衡量标准。" }
+            ],
             BriefSections =
             [
                 new BriefSection { Title = "核心结论", Body = Han(sectionCharacters) },
@@ -99,6 +105,10 @@ try
     var malformed = ValidEdition();
     malformed.Items[19].Summary = "摘要过短";
     Check(!policy.IsQualified(malformed), "任一坏条目会原子拒绝整期");
+
+    var missingGlossary = ValidEdition();
+    missingGlossary.Items[0].TermExplanations = [];
+    Check(!policy.IsQualified(missingGlossary), "缺少入门术语解释时整期拒绝");
 
     var nullItem = ValidEdition();
     nullItem.Items[19] = null!;

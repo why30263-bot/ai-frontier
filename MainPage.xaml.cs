@@ -1,9 +1,12 @@
+using System.Collections.ObjectModel;
+using System.Text;
 using AIFrontier.Models;
 using AIFrontier.Services;
 using AIFrontier.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace AIFrontier;
 
@@ -12,11 +15,18 @@ public sealed partial class MainPage : Page
     private bool _isCompact;
     private bool _compactDetailVisible;
     private bool _isPreferenceVisible;
+    private bool _isCodexChatOpen;
+    private bool _isCodexChatInline;
+    private bool _isCodexChatInitialized;
     private bool _suppressRatingFeedback;
+    private CancellationTokenSource? _codexChatCancellation;
+    private Task _activeCodexRequest = Task.CompletedTask;
+    private readonly CodexChatService _codexChatService = new();
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromMinutes(10) };
     private readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
 
     public MainPageViewModel ViewModel { get; } = new();
+    public ObservableCollection<CodexChatMessage> CodexMessages { get; } = [];
 
     public MainPage()
     {
@@ -33,6 +43,7 @@ public sealed partial class MainPage : Page
         };
         _refreshTimer.Tick += async (_, _) => await RefreshNewsAsync(false);
         _updateTimer.Tick += async (_, _) => await CheckForUpdatesAndPromptAsync(false);
+        StartNewVisibleConversation();
     }
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -163,6 +174,41 @@ public sealed partial class MainPage : Page
             FeedPane.Visibility = Visibility.Collapsed;
             DetailPane.Visibility = Visibility.Collapsed;
         }
+
+        UpdateCodexChatLayout(width);
+    }
+
+    private void UpdateCodexChatLayout(double width)
+    {
+        _isCodexChatInline = width >= 1640;
+        var chatVisible = _isCodexChatOpen && !_isPreferenceVisible;
+        CodexChatPane.Visibility = chatVisible ? Visibility.Visible : Visibility.Collapsed;
+        ChatColumn.Width = chatVisible && _isCodexChatInline
+            ? new GridLength(400)
+            : new GridLength(0);
+
+        if (!chatVisible)
+        {
+            return;
+        }
+
+        if (_isCodexChatInline)
+        {
+            Grid.SetColumn(CodexChatPane, 2);
+            Grid.SetColumnSpan(CodexChatPane, 1);
+            CodexChatPane.Width = double.NaN;
+            CodexChatPane.HorizontalAlignment = HorizontalAlignment.Stretch;
+            CodexChatPane.Margin = new Thickness(0);
+            DetailColumn.Width = new GridLength(Math.Clamp(width * 0.38, 520, 700));
+        }
+        else
+        {
+            Grid.SetColumn(CodexChatPane, 0);
+            Grid.SetColumnSpan(CodexChatPane, 3);
+        CodexChatPane.Width = double.NaN;
+        CodexChatPane.HorizontalAlignment = HorizontalAlignment.Right;
+        CodexChatPane.Margin = width < 620 ? new Thickness(0) : new Thickness(Math.Max(0, width - 460), 0, 0, 0);
+        }
     }
 
     private async void NewsList_ItemClick(object sender, ItemClickEventArgs e)
@@ -195,6 +241,13 @@ public sealed partial class MainPage : Page
 
     private void BackKeyboardAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
+        if (_isCodexChatOpen && !_isPreferenceVisible)
+        {
+            CloseCodexChat();
+            args.Handled = true;
+            return;
+        }
+
         if (!_isCompact || !_compactDetailVisible || _isPreferenceVisible)
         {
             return;
@@ -273,20 +326,260 @@ public sealed partial class MainPage : Page
 
     private async void AnalyzeWithCodexButton_Click(object sender, RoutedEventArgs e)
     {
-        SetBusy(AnalyzeWithCodexButton, CodexProgressRing, true);
+        if (ViewModel.SelectedItem is not { } item)
+        {
+            return;
+        }
+
+        OpenCodexChat();
+        AddCodexMessage("你", $"请深度分析：{item.Title}");
+        _activeCodexRequest = RunCodexRequestAsync((onDelta, cancellationToken) =>
+            _codexChatService.AnalyzeArticleAsync(item, onDelta, cancellationToken));
+        await _activeCodexRequest;
+    }
+
+    private void OpenCodexChat()
+    {
+        _isCodexChatOpen = true;
+        UpdateResponsiveLayout(ActualWidth);
+        CodexPromptTextBox.Focus(FocusState.Programmatic);
+    }
+
+    private void CloseCodexChatButton_Click(object sender, RoutedEventArgs e) => CloseCodexChat();
+
+    private void CloseCodexChat()
+    {
+        _isCodexChatOpen = false;
+        UpdateResponsiveLayout(ActualWidth);
+        AnalyzeWithCodexButton.Focus(FocusState.Programmatic);
+    }
+
+    private async void NewCodexConversationButton_Click(object sender, RoutedEventArgs e)
+    {
+        _codexChatCancellation?.Cancel();
+        await AwaitActiveCodexRequestAsync();
+        SetCodexChatBusy(true);
         try
         {
-            await ViewModel.AnalyzeWithCodexAsync();
+            await EnsureCodexChatInitializedAsync();
+            var reset = await _codexChatService.ResetConversationAsync();
+            if (!reset.Success)
+            {
+                throw new InvalidOperationException(reset.Status);
+            }
+            StartNewVisibleConversation();
+            _isCodexChatInitialized = false;
+            CodexPromptTextBox.Focus(FocusState.Programmatic);
         }
         catch (Exception exception)
         {
-            ViewModel.FeedbackMessage = $"打开 Codex 分析失败：{exception.Message}";
-            ViewModel.IsFeedbackMessageOpen = true;
+            AddCodexMessage("系统", $"无法开始新对话：{exception.Message}");
         }
         finally
         {
-            SetBusy(AnalyzeWithCodexButton, CodexProgressRing, false);
+            SetCodexChatBusy(false);
         }
+    }
+
+    private async void CodexQuickPromptButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string prompt })
+        {
+            OpenCodexChat();
+            await SendCodexPromptAsync(prompt);
+        }
+    }
+
+    private async void SendCodexMessageButton_Click(object sender, RoutedEventArgs e) =>
+        await SendCodexPromptAsync(CodexPromptTextBox.Text);
+
+    private async void CodexPromptTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await SendCodexPromptAsync(CodexPromptTextBox.Text);
+    }
+
+    private async Task SendCodexPromptAsync(string prompt)
+    {
+        prompt = prompt.Trim();
+        if (prompt.Length == 0 || CodexBusyPanel.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        CodexPromptTextBox.Text = string.Empty;
+        AddCodexMessage("你", prompt);
+        _activeCodexRequest = RunCodexRequestAsync((onDelta, cancellationToken) =>
+            _codexChatService.SendMessageAsync(prompt, onDelta, cancellationToken));
+        await _activeCodexRequest;
+    }
+
+    private void StopCodexButton_Click(object sender, RoutedEventArgs e) =>
+        _codexChatCancellation?.Cancel();
+
+    private async Task AwaitActiveCodexRequestAsync()
+    {
+        try
+        {
+            await _activeCodexRequest;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RunCodexRequestAsync(
+        Func<Action<string>, CancellationToken, Task<CodexChatResult>> request)
+    {
+        _codexChatCancellation?.Cancel();
+        _codexChatCancellation?.Dispose();
+        _codexChatCancellation = new CancellationTokenSource();
+        var cancellationToken = _codexChatCancellation.Token;
+        var responseIndex = AddCodexMessage("Codex", string.Empty);
+        CodexMessages[responseIndex].IsPending = true;
+        var responseBuffer = new StringBuilder();
+        var requestCompleted = 0;
+        SetCodexChatBusy(true);
+
+        try
+        {
+            await EnsureCodexChatInitializedAsync(cancellationToken);
+            var result = await request(delta =>
+            {
+                if (string.IsNullOrEmpty(delta))
+                {
+                    return;
+                }
+
+                if (Volatile.Read(ref requestCompleted) != 0)
+                {
+                    return;
+                }
+                responseBuffer.Append(delta);
+                var snapshot = responseBuffer.ToString();
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (Volatile.Read(ref requestCompleted) == 0)
+                    {
+                        UpdateCodexMessage(responseIndex, snapshot);
+                    }
+                });
+            }, cancellationToken);
+
+            Interlocked.Exchange(ref requestCompleted, 1);
+            if (!result.Success)
+            {
+                UpdateCodexMessage(responseIndex, result.Status);
+            }
+            else if (!string.IsNullOrWhiteSpace(result.Response))
+            {
+                UpdateCodexMessage(responseIndex, result.Response);
+            }
+            else if (responseBuffer.Length == 0)
+            {
+                UpdateCodexMessage(responseIndex, "这次没有生成可显示的回答，请稍后重试。");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateCodexMessage(responseIndex, "已停止本次回答。");
+        }
+        catch (Exception exception)
+        {
+            UpdateCodexMessage(responseIndex, $"暂时无法完成回答：{exception.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref requestCompleted, 1);
+            if (responseIndex >= 0 && responseIndex < CodexMessages.Count)
+            {
+                CodexMessages[responseIndex].IsPending = false;
+            }
+            SetCodexChatBusy(false);
+            ScrollCodexMessagesToEnd();
+        }
+    }
+
+    private async Task EnsureCodexChatInitializedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_isCodexChatInitialized && _codexChatService.IsInitialized)
+        {
+            return;
+        }
+
+        var result = await _codexChatService.InitializeAsync(cancellationToken);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(result.Status);
+        }
+        _isCodexChatInitialized = true;
+    }
+
+    private void StartNewVisibleConversation()
+    {
+        CodexMessages.Clear();
+        AddCodexMessage("Codex", "我会围绕当前资讯解释概念、梳理证据和回答追问。你可以直接输入问题，也可以使用快捷追问。");
+    }
+
+    private int AddCodexMessage(string sender, string content)
+    {
+        CodexMessages.Add(CreateCodexMessage(sender, content));
+        ScrollCodexMessagesToEnd();
+        return CodexMessages.Count - 1;
+    }
+
+    private void UpdateCodexMessage(int index, string content)
+    {
+        if (index < 0 || index >= CodexMessages.Count)
+        {
+            return;
+        }
+
+        CodexMessages[index].Content = content;
+        ScrollCodexMessagesToEnd();
+    }
+
+    private static CodexChatMessage CreateCodexMessage(string sender, string content) => new()
+    {
+        SenderLabel = sender,
+        Kind = sender == "你" ? "user" : sender == "系统" ? "system" : "assistant",
+        Content = content,
+        TimeLabel = DateTimeOffset.Now.ToString("HH:mm")
+    };
+
+    private void ScrollCodexMessagesToEnd()
+    {
+        if (CodexMessages.LastOrDefault() is { } last)
+        {
+            CodexMessageList?.ScrollIntoView(last, ScrollIntoViewAlignment.Default);
+        }
+    }
+
+    private void SetCodexChatBusy(bool isBusy)
+    {
+        CodexBusyPanel.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        CodexChatProgressRing.IsActive = isBusy;
+        SendCodexMessageButton.IsEnabled = !isBusy;
+        CodexPromptTextBox.IsEnabled = !isBusy;
+        AnalyzeWithCodexButton.IsEnabled = !isBusy;
+        NewCodexConversationButton.IsEnabled = !isBusy;
+        CodexProgressRing.IsActive = isBusy;
+        CodexProgressRing.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _refreshTimer.Stop();
+        _updateTimer.Stop();
+        _codexChatCancellation?.Cancel();
+        await AwaitActiveCodexRequestAsync();
+        _codexChatCancellation?.Dispose();
+        await _codexChatService.DisposeAsync();
     }
 
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)

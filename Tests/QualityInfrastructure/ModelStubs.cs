@@ -16,12 +16,20 @@ public sealed class NewsItem
     public List<string> Topics { get; set; } = [];
     public string Title { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
+    public string ReaderContext { get; set; } = string.Empty;
+    public List<TermExplanation> TermExplanations { get; set; } = [];
     public List<BriefSection> BriefSections { get; set; } = [];
     public string PublishedAt { get; set; } = string.Empty;
     public string SourceName { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;
     public double InnovationScore { get; set; }
     public double TechnicalRelevanceScore { get; set; }
+}
+
+public sealed class TermExplanation
+{
+    public string Term { get; set; } = string.Empty;
+    public string Explanation { get; set; } = string.Empty;
 }
 
 public sealed class BriefSection
