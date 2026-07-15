@@ -14,5 +14,7 @@
     <Compile Include="..\..\Services\QualifiedEditionStore.cs" Link="Production\QualifiedEditionStore.cs" />
     <Compile Include="..\..\Services\AtomicJsonStore.cs" Link="Production\AtomicJsonStore.cs" />
     <Compile Include="..\..\Services\BoundedProcessRunner.cs" Link="Production\BoundedProcessRunner.cs" />
+    <Compile Include="..\..\Services\DailyNewsUpdatePolicy.cs" Link="Production\DailyNewsUpdatePolicy.cs" />
+    <Compile Include="..\..\Models\LocalNewsUpdateModels.cs" Link="Production\LocalNewsUpdateModels.cs" />
   </ItemGroup>
 </Project>

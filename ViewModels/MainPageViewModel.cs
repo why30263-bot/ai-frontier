@@ -12,6 +12,7 @@ public partial class MainPageViewModel : ObservableObject
     private readonly PreferenceService _preferenceService = new();
     private readonly UpdateService _updateService = new();
     private readonly CodexIntegrationService _codexIntegrationService = new();
+    private readonly DailyNewsUpdateCoordinator _dailyNewsUpdateCoordinator = new();
     private readonly List<NewsItem> _allItems = [];
     private List<NewsItem> _filteredItems = [];
     private const int BatchSize = 10;
@@ -59,6 +60,18 @@ public partial class MainPageViewModel : ObservableObject
     public partial string CodexWorkspacePath { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string LocalNewsUpdateStatus { get; set; } = "正在读取每日更新设置…";
+
+    [ObservableProperty]
+    public partial bool IsPersonalUpdateMode { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLocalFallbackEnabled { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsLocalNewsUpdateBusy { get; set; }
+
+    [ObservableProperty]
     public partial string BatchLabel { get; set; } = "每批 10 条";
 
     [ObservableProperty]
@@ -82,7 +95,15 @@ public partial class MainPageViewModel : ObservableObject
     public async Task LoadAsync()
     {
         var selectedId = SelectedItem?.Id;
-        var edition = await _newsService.LoadAsync();
+        var localSettings = await _dailyNewsUpdateCoordinator.LoadSettingsAsync();
+        IsPersonalUpdateMode = localSettings.Mode == NewsUpdateMode.LocalCodexOnly;
+        IsLocalFallbackEnabled = localSettings.LocalFallbackEnabled;
+        LocalNewsUpdateStatus = string.IsNullOrWhiteSpace(localSettings.LastStatus)
+            ? IsPersonalUpdateMode
+                ? "个人模式：每天启动后由本机 Codex 更新"
+                : "云端优先，异常时由本机 Codex 自动接管"
+            : localSettings.LastStatus;
+        var edition = await _newsService.LoadAsync(refreshRemote: !IsPersonalUpdateMode);
         _allItems.Clear();
         _allItems.AddRange(edition.Items);
         EditionLabel = $"{edition.EditionDate} · {edition.Items.Count} 条";
@@ -103,6 +124,49 @@ public partial class MainPageViewModel : ObservableObject
         }
         CodexWorkspacePath = _codexIntegrationService.WorkspacePath;
         _ = DetectCodexAsync();
+    }
+
+    public async Task SaveLocalNewsUpdatePreferencesAsync(bool personalMode, bool fallbackEnabled)
+    {
+        IsPersonalUpdateMode = personalMode;
+        IsLocalFallbackEnabled = fallbackEnabled;
+        await _dailyNewsUpdateCoordinator.SavePreferencesAsync(personalMode, fallbackEnabled);
+        LocalNewsUpdateStatus = personalMode
+            ? "个人模式已开启：后续不依赖云端资讯"
+            : fallbackEnabled
+                ? "云端优先，异常时由本机 Codex 自动接管"
+                : "仅使用云端资讯更新";
+    }
+
+    public async Task<DailyNewsUpdateResult> RunDailyNewsUpdateAsync(
+        bool force,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsLocalNewsUpdateBusy)
+        {
+            return new(false, false, false, false, LocalNewsUpdateStatus);
+        }
+
+        IsLocalNewsUpdateBusy = true;
+        try
+        {
+            var current = await _newsService.LoadAsync(refreshRemote: !IsPersonalUpdateMode);
+            var result = await _dailyNewsUpdateCoordinator.RunAsync(
+                current,
+                force,
+                status => App.DispatcherQueue.TryEnqueue(() => LocalNewsUpdateStatus = status),
+                cancellationToken);
+            LocalNewsUpdateStatus = result.Status;
+            if (result.CodexConnected && IsPersonalUpdateMode)
+            {
+                CodexStatus = "已接入本机 Codex · 个人资讯更新可用";
+            }
+            return result;
+        }
+        finally
+        {
+            IsLocalNewsUpdateBusy = false;
+        }
     }
 
     private async Task DetectCodexAsync()

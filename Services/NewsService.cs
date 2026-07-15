@@ -36,7 +36,7 @@ public sealed class NewsService
             JsonOptions);
     }
 
-    public async Task<NewsEdition> LoadAsync()
+    public async Task<NewsEdition> LoadAsync(bool refreshRemote = true)
     {
         // First paint is a local-only operation. Network configuration, remote
         // editions and candidate discovery are deliberately deferred.
@@ -59,7 +59,10 @@ public sealed class NewsService
             PrepareForReading(item);
         }
 
-        _ = RefreshRemoteSourcesInBackgroundAsync(configuration, edition);
+        if (refreshRemote)
+        {
+            _ = RefreshRemoteSourcesInBackgroundAsync(configuration, edition);
+        }
 
         return edition;
     }

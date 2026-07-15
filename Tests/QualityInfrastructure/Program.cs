@@ -200,6 +200,20 @@ try
     await File.WriteAllTextAsync(atomicPath, "{损坏的json");
     Check(await atomicStore.LoadAsync() is null, "损坏的偏好 JSON 会安全回退而不使应用崩溃");
 
+    var healthyCloud = new CloudFeedHealth(true, true, true, ValidEdition(), "ok");
+    var unavailableCloud = new CloudFeedHealth(false, false, false, null, "offline");
+    var staleCloud = new CloudFeedHealth(true, true, false, ValidEdition(), "stale");
+    Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.CloudPreferred, true, 1, healthyCloud) == DailyNewsUpdateRoute.UseCloud,
+        "云端资讯新鲜时不会消耗本机 Codex 额度");
+    Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.CloudPreferred, true, 1, unavailableCloud) == DailyNewsUpdateRoute.UseLocalCodex,
+        "云端无法连接时立即由本机 Codex 接管");
+    Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.CloudPreferred, true, 1, staleCloud) == DailyNewsUpdateRoute.WaitForCloud,
+        "云端首次过期时先等待下一次确认");
+    Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.CloudPreferred, true, 2, staleCloud) == DailyNewsUpdateRoute.UseLocalCodex,
+        "云端连续过期两次后由本机 Codex 接管");
+    Check(DailyNewsUpdatePolicy.Decide(NewsUpdateMode.LocalCodexOnly, true, 0, healthyCloud) == DailyNewsUpdateRoute.UseLocalCodex,
+        "个人模式不依赖云端成品并直接使用本机 Codex");
+
     var timeoutProcess = new ProcessStartInfo
     {
         FileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",

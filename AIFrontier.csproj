@@ -39,6 +39,12 @@
              Exclude="Data\*.draft.json;Data\*.draft.json.tmp"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Workflow\**\*"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="scripts\update_feed.py;scripts\model_router.py;scripts\validate_release.py"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
