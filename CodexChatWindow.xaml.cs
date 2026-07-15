@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
 using Windows.System;
+using Windows.UI;
 
 namespace AIFrontier;
 
@@ -27,6 +28,7 @@ public sealed partial class CodexChatWindow : Window
     {
         InitializeComponent();
         AppWindow.SetIcon("Assets/AppIcon.ico");
+        ApplyDarkTitleBar();
         AppWindow.Resize(new SizeInt32(680, 820));
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -37,6 +39,34 @@ public sealed partial class CodexChatWindow : Window
         AppWindow.Closing += AppWindow_Closing;
         Closed += Window_Closed;
         StartVisibleConversation();
+    }
+
+    private void ApplyDarkTitleBar()
+    {
+        if (!AppWindowTitleBar.IsCustomizationSupported())
+        {
+            return;
+        }
+
+        var titleBar = AppWindow.TitleBar;
+        var background = Color.FromArgb(255, 23, 25, 29);
+        var hoverBackground = Color.FromArgb(255, 45, 48, 55);
+        var pressedBackground = Color.FromArgb(255, 61, 65, 74);
+        var foreground = Color.FromArgb(255, 245, 247, 250);
+        var inactiveForeground = Color.FromArgb(255, 174, 180, 192);
+
+        titleBar.BackgroundColor = background;
+        titleBar.ForegroundColor = foreground;
+        titleBar.InactiveBackgroundColor = background;
+        titleBar.InactiveForegroundColor = inactiveForeground;
+        titleBar.ButtonBackgroundColor = background;
+        titleBar.ButtonForegroundColor = foreground;
+        titleBar.ButtonHoverBackgroundColor = hoverBackground;
+        titleBar.ButtonHoverForegroundColor = foreground;
+        titleBar.ButtonPressedBackgroundColor = pressedBackground;
+        titleBar.ButtonPressedForegroundColor = foreground;
+        titleBar.ButtonInactiveBackgroundColor = background;
+        titleBar.ButtonInactiveForegroundColor = inactiveForeground;
     }
 
     public async Task AnalyzeArticleAsync(NewsItem item)
