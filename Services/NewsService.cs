@@ -18,6 +18,7 @@ public sealed class NewsService
     private readonly BuiltInCollectorService _collector;
     private readonly EditionQualityPolicy _editionPolicy;
     private readonly QualifiedEditionStore _qualifiedEditionStore;
+    private readonly PreferenceService _preferences;
     private readonly string _cacheRoot;
 
     private string CandidateCachePath => Path.Combine(_cacheRoot, "candidates", "discovered.json");
@@ -30,13 +31,14 @@ public sealed class NewsService
             "cache");
         _collector = new BuiltInCollectorService();
         _editionPolicy = new EditionQualityPolicy();
+        _preferences = new PreferenceService();
         _qualifiedEditionStore = new QualifiedEditionStore(
             Path.Combine(_cacheRoot, "qualified-v2", "news.json"),
             _editionPolicy,
             JsonOptions);
     }
 
-    public async Task<NewsEdition> LoadAsync()
+    public async Task<NewsEdition> LoadAsync(bool refreshRemote = true)
     {
         // First paint is a local-only operation. Network configuration, remote
         // editions and candidate discovery are deliberately deferred.
@@ -59,7 +61,10 @@ public sealed class NewsService
             PrepareForReading(item);
         }
 
-        _ = RefreshRemoteSourcesInBackgroundAsync(configuration, edition);
+        if (refreshRemote)
+        {
+            _ = RefreshRemoteSourcesInBackgroundAsync(configuration, edition);
+        }
 
         return edition;
     }
@@ -85,7 +90,14 @@ public sealed class NewsService
             {
                 // The next refresh/load observes the new edition. Current reading is
                 // never interrupted by a background network result.
-                _ = await _qualifiedEditionStore.SaveAsync(remoteEdition!);
+                var profile = await _preferences.LoadAsync();
+                var bookmarked = (profile.BookmarkedIds ?? []).ToHashSet(StringComparer.Ordinal);
+                remoteEdition = BookmarkedEditionMerger.Preserve(
+                    remoteEdition!,
+                    displayedEdition,
+                    bookmarked);
+                newestEdition = remoteEdition;
+                _ = await _qualifiedEditionStore.SaveAsync(remoteEdition);
             }
 
             var lacksRequiredCategories = configuration.CategoryMinimums.Any(pair =>

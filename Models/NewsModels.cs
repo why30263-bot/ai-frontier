@@ -60,6 +60,10 @@ public sealed class NewsItem
     public bool HasDiscussionMetrics { get; set; }
     public string HeatReason { get; set; } = string.Empty;
     public DateTimeOffset? HeatMeasuredAt { get; set; }
+    public DateTimeOffset? AddedAt { get; set; }
+
+    [JsonIgnore]
+    public bool IsRead { get; set; }
 
     [JsonIgnore]
     public SolidColorBrush BrandBrush => new(ParseHex(BrandColor));
@@ -96,6 +100,18 @@ public sealed class NewsItem
         ? $"综合公开讨论、升温速度、来源质量、创新性和新鲜度。{HeatReason}"
         : $"当前未取得稳定的跨平台讨论快照，本分数只根据可核查来源、创新性、技术相关性和新鲜度计算。{HeatReason}";
 
+    [JsonIgnore]
+    public bool HasRecentArrival => AddedAt is { } added &&
+        DateTimeOffset.Now - added <= TimeSpan.FromDays(3);
+
+    [JsonIgnore]
+    public bool IsNew => HasRecentArrival && !IsRead;
+
+    [JsonIgnore]
+    public Visibility NewBadgeVisibility => IsNew
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
     private static Color ParseHex(string value)
     {
         var hex = value.TrimStart('#');
@@ -112,6 +128,22 @@ public sealed class BriefSection
 {
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+
+    // Local models commonly call a section title "heading". Accept that
+    // spelling during deserialization while continuing to publish "title".
+    [JsonPropertyName("heading")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? HeadingAlias
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                Title = value;
+            }
+        }
+    }
 }
 
 public sealed class TermExplanation
@@ -208,3 +240,7 @@ public sealed record FeedbackEvent(
     string Category,
     string Source,
     DateTimeOffset CreatedAt);
+
+public sealed record PreferenceRecordResult(
+    PreferenceProfile Profile,
+    bool Persisted);

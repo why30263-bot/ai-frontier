@@ -12,10 +12,12 @@ public sealed partial class BuiltInCollectorService
 {
     private static readonly HttpClient Http = CreateClient();
 
-    public async Task<IReadOnlyList<NewsItem>> CollectAsync(FeedConfiguration configuration)
+    public async Task<IReadOnlyList<NewsItem>> CollectAsync(
+        FeedConfiguration configuration,
+        CancellationToken cancellationToken = default)
     {
         var tasks = configuration.Feeds
-            .Select(source => CollectFeedSafeAsync(source))
+            .Select(source => CollectFeedSafeAsync(source, cancellationToken))
             .ToList();
         if (configuration.GitHubDiscovery.Enabled)
         {
@@ -28,7 +30,7 @@ public sealed partial class BuiltInCollectorService
                     MinimumStars = configuration.GitHubDiscovery.MinimumStars,
                     MaxItems = configuration.GitHubDiscovery.MaxItems
                 }];
-            tasks.AddRange(queries.Select(query => CollectGitHubSafeAsync(configuration, query)));
+            tasks.AddRange(queries.Select(query => CollectGitHubSafeAsync(configuration, query, cancellationToken)));
         }
         var results = (await Task.WhenAll(tasks)).ToList();
         var freshCutoff = DateTimeOffset.UtcNow.AddHours(-Math.Max(24, configuration.FreshHours));
@@ -76,16 +78,17 @@ public sealed partial class BuiltInCollectorService
 
     private async Task<IReadOnlyList<NewsItem>> CollectGitHubSafeAsync(
         FeedConfiguration configuration,
-        GitHubDiscoveryQuery discovery)
+        GitHubDiscoveryQuery discovery,
+        CancellationToken cancellationToken)
     {
         try
         {
             var since = DateTimeOffset.UtcNow.AddDays(-Math.Max(1, configuration.SupplementDays)).ToString("yyyy-MM-dd");
             var query = Uri.EscapeDataString($"{discovery.Query} pushed:>={since}");
             var url = $"https://api.github.com/search/repositories?q={query}&sort=stars&order=desc&per_page={Math.Clamp(discovery.MaxItems * 2, 1, 10)}";
-            using var response = await Http.GetAsync(url);
+            using var response = await Http.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
             var output = new List<NewsItem>();
             foreach (var repository in document.RootElement.GetProperty("items").EnumerateArray())
             {
@@ -136,21 +139,34 @@ public sealed partial class BuiltInCollectorService
             }
             return output.Take(discovery.MaxItems).ToList();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             return [];
         }
     }
 
-    private async Task<IReadOnlyList<NewsItem>> CollectFeedSafeAsync(FeedSource source)
+    private async Task<IReadOnlyList<NewsItem>> CollectFeedSafeAsync(
+        FeedSource source,
+        CancellationToken cancellationToken)
     {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, source.Url);
-            using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await Http.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
             response.EnsureSuccessStatusCode();
-            var xml = await response.Content.ReadAsStringAsync();
+            var xml = await response.Content.ReadAsStringAsync(cancellationToken);
             return ParseFeed(xml, source);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

@@ -31,6 +31,7 @@ public sealed class CodexChatService : IDisposable, IAsyncDisposable
     private readonly string _workspace;
     private readonly string _developerInstructions;
     private readonly bool _requiresServiceTierOverride;
+    private readonly TimeSpan _turnTimeout;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _turnGate = new(1, 1);
@@ -62,12 +63,14 @@ public sealed class CodexChatService : IDisposable, IAsyncDisposable
         string executable,
         string workspace,
         string developerInstructions,
-        bool requiresServiceTierOverride = false)
+        bool requiresServiceTierOverride = false,
+        TimeSpan? turnTimeout = null)
     {
         _executable = executable;
         _workspace = Path.GetFullPath(workspace);
         _developerInstructions = developerInstructions;
         _requiresServiceTierOverride = requiresServiceTierOverride;
+        _turnTimeout = turnTimeout ?? TurnTimeout;
     }
 
     public bool IsInitialized => _initialized && IsProcessAlive;
@@ -192,7 +195,7 @@ public sealed class CodexChatService : IDisposable, IAsyncDisposable
             }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TurnTimeout);
+            timeout.CancelAfter(_turnTimeout);
 
             // Register the active turn before writing turn/start. app-server may
             // emit a very fast delta immediately after the response, before the

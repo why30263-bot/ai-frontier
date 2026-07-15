@@ -27,12 +27,18 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from model_router import ModelRouter, ModelRouterError, ProviderConfigurationError, load_provider_pool
+
 
 USER_AGENT = "AIFrontier/1.0 (+https://github.com/why30263-bot/ai-frontier)"
 WRITER_BATCH_SIZE = 2
 REVIEW_BATCH_SIZE = 4
 SCHEMA_VERSION = 2
-PIPELINE_CONTRACT_VERSION = "2.2"
+PIPELINE_CONTRACT_VERSION = "2.3"
 CONTENT_TYPES = {"论文", "开源项目", "模型发布", "Agent产品", "产业事件"}
 TOPIC_ORDER = ("大模型", "Agent", "重要研究", "开源项目", "产业动态")
 BATCH_SIZE = 10
@@ -713,6 +719,24 @@ def merge(existing: list[dict], collected: list[dict], maximum: int, per_source:
     return balance_categories(deduplicate_events(output), maximum, minimums)
 
 
+def is_existing_event(item: dict, existing: list[dict]) -> bool:
+    """Return whether a discovered candidate is already present in the published edition."""
+    item_id = str(item.get("id") or "").strip()
+    source_url = str(item.get("sourceUrl") or "").strip().lower()
+    event_key = str(item.get("eventKey") or "").strip()
+    normalized_title = normalize_title(str(item.get("title") or ""))
+    for published in existing:
+        if item_id and item_id == str(published.get("id") or "").strip():
+            return True
+        if source_url and source_url == str(published.get("sourceUrl") or "").strip().lower():
+            return True
+        if event_key and event_key == str(published.get("eventKey") or "").strip():
+            return True
+        if normalized_title and normalized_title == normalize_title(str(published.get("title") or "")):
+            return True
+    return False
+
+
 def apply_freshness(
     items: list[dict], fresh_hours: int, supplement_days: int, target: int, minimums: dict[str, int]
 ) -> list[dict]:
@@ -751,13 +775,14 @@ def enrich_with_ai(
     checkpoint: Callable[[list[dict], int, int], None] | None = None,
 ) -> tuple[list[dict], int]:
     """Optionally enrich entries through any OpenAI-compatible chat endpoint."""
-    api_key = os.getenv("AI_API_KEY", "").strip()
-    api_base = os.getenv("AI_API_BASE", "").strip().rstrip("/")
-    model = os.getenv("AI_MODEL", "").strip()
-    if not (api_key and api_base and model):
+    try:
+        router = ModelRouter()
+    except ProviderConfigurationError as exc:
+        print(f"warning: AI writer configuration is invalid: {exc}", file=sys.stderr)
+        return items, 0
+    if not router.providers["writer"]:
         return items, 0
 
-    endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
     allowed = {"title", "summary", "contentType", "briefSections", "keyFacts", "context", "beginnerExplainer", "readerContext", "termExplanations", "impact", "limitations", "whatToWatch", "technicalRelevanceScore", "innovationScore", "topics"}
     enriched_count = 0
     for start in range(0, len(items), WRITER_BATCH_SIZE):
@@ -797,45 +822,18 @@ def enrich_with_ai(
             "返回严格 JSON 对象，字段名必须保持英文；正文必须写成 \"briefSections\":[{\"title\":\"具体小标题\",\"body\":\"中文正文\"}]，不得改成中文字段名。整体格式为 {\"items\":[{\"id\":..., ...}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
-        payload = json.dumps({
-            "model": model,
-            "temperature": 0.2,
-            "max_tokens": 8000,
-            "response_format": {"type": "json_object"},
-            "messages": [
+        try:
+            response = router.chat_json(
+                "writer",
+                [
                 {"role": "system", "content": "输出严谨、克制、可核查的中文 JSON。"},
                 {"role": "user", "content": prompt},
-            ],
-        }, ensure_ascii=False).encode("utf-8")
-        request = urllib.request.Request(
-            endpoint,
-            data=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": USER_AGENT},
-            method="POST",
-        )
-        try:
-            response = None
-            for attempt in range(4):
-                try:
-                    response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
-                    break
-                except urllib.error.HTTPError as exc:
-                    if exc.code != 429 or attempt == 3:
-                        raise
-                    delay = 8 * (attempt + 1)
-                    print(f"warning: AI rate limited; retrying in {delay}s", file=sys.stderr)
-                    time.sleep(delay)
-                except (urllib.error.URLError, TimeoutError) as exc:
-                    if attempt == 3:
-                        raise
-                    delay = 4 * (attempt + 1)
-                    print(f"warning: AI writer connection failed ({exc}); retrying in {delay}s", file=sys.stderr)
-                    time.sleep(delay)
-            if response is None:
-                raise RuntimeError("AI enrichment returned no response")
-            content = response["choices"][0]["message"]["content"].strip()
-            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
-            enriched = json.loads(content).get("items", [])
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                extra_body={"max_tokens": 4000},
+            )
+            enriched = response.get("items", []) if isinstance(response, dict) else []
             by_id = {row.get("id"): row for row in enriched if isinstance(row, dict)}
             for item in batch:
                 changed = False
@@ -901,7 +899,7 @@ def enrich_with_ai(
                     f"{section['title']}\n{section['body']}" for section in item.get("briefSections", [])
                 )
                 item["tags"] = [tag for tag in item["tags"] if tag != "AI 增强"] + ["AI 增强"]
-        except Exception as exc:  # noqa: BLE001
+        except (ModelRouterError, ValueError, TypeError) as exc:
             print(f"warning: optional AI enrichment failed: {exc}", file=sys.stderr)
         finally:
             if checkpoint is not None:
@@ -911,12 +909,13 @@ def enrich_with_ai(
 
 def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
     """Run a separate, fail-closed editorial review over the finished Chinese copy."""
-    api_key = os.getenv("AI_API_KEY", "").strip()
-    api_base = os.getenv("AI_API_BASE", "").strip().rstrip("/")
-    model = os.getenv("AI_REVIEW_MODEL", "").strip() or os.getenv("AI_MODEL", "").strip()
-    if not (api_key and api_base and model):
+    try:
+        router = ModelRouter()
+    except ProviderConfigurationError as exc:
+        print(f"warning: AI reviewer configuration is invalid: {exc}", file=sys.stderr)
         return [], 0
-    endpoint = api_base if api_base.endswith("/chat/completions") else f"{api_base}/chat/completions"
+    if not router.providers["reviewer"]:
+        return [], 0
     passed: list[dict] = []
     reviewed = 0
     for start in range(0, len(items), REVIEW_BATCH_SIZE):
@@ -956,45 +955,18 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
             "只返回JSON：{\"items\":[{\"id\":\"...\",\"pass\":true,\"technicalRelevanceScore\":0.8,\"innovationScore\":0.7,\"issues\":[]}]}。\n\n"
             + json.dumps(material, ensure_ascii=False)
         )
-        payload = json.dumps({
-            "model": model,
-            "temperature": 0,
-            "max_tokens": 3000,
-            "response_format": {"type": "json_object"},
-            "messages": [
+        try:
+            response = router.chat_json(
+                "reviewer",
+                [
                 {"role": "system", "content": "执行严格、独立、失败关闭的中文科技新闻审稿，只输出JSON。"},
                 {"role": "user", "content": prompt},
-            ],
-        }, ensure_ascii=False).encode("utf-8")
-        request = urllib.request.Request(
-            endpoint,
-            data=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": USER_AGENT},
-            method="POST",
-        )
-        try:
-            response = None
-            for attempt in range(5):
-                try:
-                    response = json.loads(urllib.request.urlopen(request, timeout=90).read().decode("utf-8"))
-                    break
-                except urllib.error.HTTPError as exc:
-                    if exc.code != 429 or attempt == 4:
-                        raise
-                    delay = (15, 30, 60, 90)[attempt]
-                    print(f"warning: AI reviewer rate limited; retrying in {delay}s", file=sys.stderr)
-                    time.sleep(delay)
-                except (urllib.error.URLError, TimeoutError) as exc:
-                    if attempt == 4:
-                        raise
-                    delay = 4 * (attempt + 1)
-                    print(f"warning: AI reviewer connection failed ({exc}); retrying in {delay}s", file=sys.stderr)
-                    time.sleep(delay)
-            if response is None:
-                raise RuntimeError("AI review returned no response")
-            content = response["choices"][0]["message"]["content"].strip()
-            content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
-            verdicts = json.loads(content).get("items", [])
+                ],
+                temperature=0,
+                response_format={"type": "json_object"},
+                extra_body={"max_tokens": 3000},
+            )
+            verdicts = response.get("items", []) if isinstance(response, dict) else []
             by_id = {row.get("id"): row for row in verdicts if isinstance(row, dict)}
             for item in batch:
                 verdict = by_id.get(item["id"], {})
@@ -1022,7 +994,7 @@ def review_with_ai(items: list[dict]) -> tuple[list[dict], int]:
                         f"local gate rejected {item['id']}: {report_issues}",
                         file=sys.stderr,
                     )
-        except Exception as exc:  # noqa: BLE001
+        except (ModelRouterError, ValueError, TypeError) as exc:
             print(f"warning: independent AI review failed closed: {exc}", file=sys.stderr)
     return passed, reviewed
 
@@ -1081,10 +1053,20 @@ def main() -> int:
     output_path = Path(args.output)
     draft_path = Path(args.draft_cache) if args.draft_cache else output_path.with_suffix(".draft.json")
     current = json.loads(output_path.read_text(encoding="utf-8")) if output_path.exists() else {"items": []}
+    existing_qualified = (
+        list(current.get("items", []))
+        if int(current.get("schemaVersion", 1)) >= SCHEMA_VERSION
+        else []
+    )
     minimums = {key: int(value) for key, value in config.get("categoryMinimums", {}).items()}
     candidate_limit = args.max_candidates if args.max_candidates > 0 else int(config.get("maxItems", 18))
     selection_minimums = {key: min(value, 2) for key, value in minimums.items()} if args.max_candidates > 0 else minimums
-    ai_requested = all(os.getenv(name, "").strip() for name in ("AI_API_KEY", "AI_API_BASE", "AI_MODEL"))
+    try:
+        configured_pool = load_provider_pool()
+        ai_requested = bool(configured_pool["writer"] and configured_pool["reviewer"])
+    except ProviderConfigurationError as exc:
+        print(f"warning: AI provider pool is invalid: {exc}", file=sys.stderr)
+        ai_requested = False
     if args.reuse_draft or args.repair_draft:
         try:
             draft = load_draft_cache(draft_path, config_fingerprint)
@@ -1133,14 +1115,28 @@ def main() -> int:
             int(config.get("maxItems", 18)),
             minimums,
         )
-        existing = [] if args.drop_existing or int(current.get("schemaVersion", 1)) < SCHEMA_VERSION else current.get("items", [])
-        items = merge(
-            existing,
-            collected,
-            candidate_limit,
-            int(config.get("maxItemsPerSource", 4)),
-            selection_minimums,
+        if args.drop_existing:
+            existing_qualified = []
+        unseen = [item for item in collected if not is_existing_event(item, existing_qualified)]
+        maximum_new_items = candidate_limit if len(existing_qualified) < MINIMUM_EDITION_ITEMS else max(
+            1,
+            int(config.get("maxNewItemsPerRun", 8)),
         )
+        items = merge(
+            [],
+            unseen,
+            min(candidate_limit, maximum_new_items),
+            int(config.get("maxItemsPerSource", 4)),
+            {key: min(value, 1) for key, value in selection_minimums.items()},
+        )
+        print(
+            f"incremental selection: discovered={len(collected)} unseen={len(unseen)} "
+            f"selected={len(items)} retained={len(existing_qualified)}",
+            file=sys.stderr,
+        )
+        if not items and existing_qualified:
+            print("no unseen candidates; keeping the current qualified edition", file=sys.stderr)
+            return 0
         for item in items:
             item["_sourceTitle"] = item.get("_sourceTitle") or item.get("title", "")
         attach_source_material(items)
@@ -1199,8 +1195,15 @@ def main() -> int:
             and float(item["technicalRelevanceScore"]) >= 0.55
             and float(item["innovationScore"]) >= 0.35
         )]
+        new_passed_count = len(items)
+        if new_passed_count == 0 and existing_qualified:
+            print("no new article passed editorial review; keeping the current qualified edition", file=sys.stderr)
+            return 0
+        new_passed_ids = {str(item.get("id") or "") for item in items}
+        items = deduplicate_events([*items, *existing_qualified])
         items = balance_categories(items, candidate_limit, selection_minimums)
         items = compose_fixed_batches(items, candidate_limit)
+        published_new_count = sum(str(item.get("id") or "") in new_passed_ids for item in items)
         core_coverage_ok = bool(items) and all(
             batch_has_core_coverage(items[start:start + BATCH_SIZE])
             for start in range(0, len(items), BATCH_SIZE)
@@ -1213,9 +1216,14 @@ def main() -> int:
         }
         print(
             f"editorial audit: submitted={submitted_count} enriched={enriched_count} writer_ready={writer_ready_count} "
-            f"reviewed={reviewed_count} passed={len(items)} coverage={coverage_counts}",
+            f"reviewed={reviewed_count} new_passed={new_passed_count} published_new={published_new_count} "
+            f"published={len(items)} "
+            f"coverage={coverage_counts}",
             file=sys.stderr,
         )
+        if published_new_count == 0 and existing_qualified:
+            print("new approved articles could not enter a balanced page; keeping the current edition", file=sys.stderr)
+            return 0
         if len(items) < MINIMUM_EDITION_ITEMS or len(items) % BATCH_SIZE or not core_coverage_ok:
             print("warning: Chinese technical edition did not meet coverage; preserving the previous edition", file=sys.stderr)
             return 1 if args.fail_on_preserve or not current.get("items") else 0
@@ -1235,6 +1243,10 @@ def main() -> int:
         "items": items,
     }
     atomic_write_json(output_path, edition)
+    try:
+        draft_path.unlink(missing_ok=True)
+    except OSError as exc:
+        print(f"warning: could not remove completed draft cache: {exc}", file=sys.stderr)
     print(f"wrote {len(items)} items to {output_path}")
     return 0
 

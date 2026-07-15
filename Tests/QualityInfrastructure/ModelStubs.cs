@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AIFrontier.Models;
 
 public sealed class NewsEdition
@@ -22,8 +24,15 @@ public sealed class NewsItem
     public string PublishedAt { get; set; } = string.Empty;
     public string SourceName { get; set; } = string.Empty;
     public string SourceUrl { get; set; } = string.Empty;
+    public DateTimeOffset? AddedAt { get; set; }
+    public bool IsRead { get; set; }
+    public bool HasRecentArrival => AddedAt is { } added &&
+        DateTimeOffset.Now - added <= TimeSpan.FromDays(3);
+    public bool IsNew => HasRecentArrival && !IsRead;
     public double InnovationScore { get; set; }
     public double TechnicalRelevanceScore { get; set; }
+    public double SourceQualityScore { get; set; }
+    public double FreshnessScore { get; set; }
 }
 
 public sealed class TermExplanation
@@ -36,4 +45,17 @@ public sealed class BriefSection
 {
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+    [JsonPropertyName("heading")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? HeadingAlias
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                Title = value;
+            }
+        }
+    }
 }

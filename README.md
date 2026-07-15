@@ -18,7 +18,7 @@
 
 | 层级 | 作用 | 是否依赖 AI |
 | --- | --- | --- |
-| GitHub 公共编辑源 | 每 4 小时采集、去重并发布共享 `Data/news.json` | 自动使用 GitHub Models 做中文编辑，不依赖 Codex |
+| GitHub 公共编辑源 | 每 4 小时增量采集、去重并发布共享 `Data/news.json` | 支持千问、豆包、GitHub Models 等兼容接口，不依赖 Codex |
 | 客户端内置采集器 | 公共编辑源超过 18 小时未更新时，直接读取 RSS、Atom、公开 API 与 GitHub 项目搜索 | 否 |
 | 可选编辑增强 | 可由兼容接口或本机 Codex 把来源摘要改写成更完整的中文分析 | 是，可选 |
 
@@ -77,17 +77,39 @@
 
 Codex 收到消息后会立即显示“正在思考”，等待较久时切换为“正在检索和核对资料”，开始返回文字后显示“正在组织回答”。中断旧回答再提问时，新状态不会被旧请求的结束回调提前关闭。应用会从本机 Codex 实际提供的模型中自动选择兼容版本，避免旧 CLI 因账户默认模型过新而无法回答。
 
-Codex 会按预设协议用入门中文说明重要性、影响、局限和后续观察。它只在用户主动操作时启动；应用不会自动把阅读历史上传到项目仓库，也不会要求 Codex 承担采集或软件更新。
+Codex 会按预设协议用入门中文说明重要性、影响、局限和后续观察。应用不会把阅读历史上传到项目仓库。用户可在设置中选择“云端优先”或“个人模式”：云端优先仅在公共资讯不可达或连续过期时由本机 Codex 静默接管；个人模式每天首次启动直接使用本机 Codex 整理今日资讯。后台编辑使用独立进程与独立工作区，不会弹出命令行，也不会打断阅读窗口中的 Codex 对话；任何未通过客户端质量检查的结果都不会覆盖上一期合格资讯。
+
+本地更新设置保存在 `%LOCALAPPDATA%\AIFrontier\local-news-update.json`，本地成品原子写入 `%LOCALAPPDATA%\AIFrontier\cache\qualified-v2\news.json`。同一天成功后不会重复消耗额度，手动点击“立即检查并更新今日资讯”除外。发布包同时附带 `Workflow` 与云端脚本供审计和高级用户复用，但普通客户端的本地更新不依赖 Python。
 
 ## 可选 AI / 工作流增强
 
-固定采集器始终可独立运行。公开仓库的 Actions 默认使用 GitHub 自动提供的 `GITHUB_TOKEN` 调用 GitHub Models，把标题、摘要和详细分析统一改写成中文，不需要配置 Codex 或单独购买 API Key。若希望替换为自己的兼容接口，可配置：
+固定采集器始终可独立运行。公开仓库的 Actions 默认使用 GitHub 自动提供的 `GITHUB_TOKEN` 调用 GitHub Models；为了长期稳定运行，建议把千问或豆包的正式 API 作为主通道或付费兜底。流水线只处理新增资讯，已发布文章不会重复消耗模型额度；中断草稿会通过 Actions 缓存留给下一轮继续修复。
+
+单一兼容接口可配置：
 
 - Secret：`AI_API_KEY`
 - Variable：`AI_API_BASE`（兼容 `/chat/completions`）
 - Variable：`AI_MODEL`
+- 可选 Secret/Variable：`AI_REVIEW_API_KEY`、`AI_REVIEW_API_BASE`、`AI_REVIEW_MODEL`，让复审使用另一家模型
 
-不设置时工作流自动使用可审计的规则模板。也可以让本机 Codex 读取 `workflow-profile.json`，核查来源后更新 `Data/news.json`；建议遵循 [工作流约定](Workflow/README.md)，Codex 只是可选增强层。
+多模型自动切换可新增一个仓库 Secret：`AI_PROVIDER_POOL_JSON`。它优先于上述单接口配置，内容示例：
+
+```json
+{
+  "writer": [
+    {"name":"qwen","baseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1","model":"qwen-plus","apiKey":"你的百炼Key"},
+    {"name":"doubao","baseUrl":"https://ark.cn-beijing.volces.com/api/v3","model":"你的豆包Endpoint或模型ID","apiKey":"你的方舟Key"}
+  ],
+  "reviewer": [
+    {"name":"doubao","baseUrl":"https://ark.cn-beijing.volces.com/api/v3","model":"你的豆包Endpoint或模型ID","apiKey":"你的方舟Key"},
+    {"name":"qwen-flash","baseUrl":"https://dashscope.aliyuncs.com/compatible-mode/v1","model":"qwen-flash","apiKey":"你的百炼Key"}
+  ]
+}
+```
+
+路由器遇到认证错误会立即熔断该通道；遇到 429、服务端错误或网络异常只做一次短重试，然后切换下一家，且不会在日志中输出 API Key。
+
+不设置额外模型时仍会回退到 GitHub Models，但免费实验额度不保证生产级可用性。也可以让本机 Codex 读取 `workflow-profile.json`，核查来源后更新 `Data/news.json`；建议遵循 [工作流约定](Workflow/README.md)，Codex 只是可选增强层。
 
 ## 本地开发
 
